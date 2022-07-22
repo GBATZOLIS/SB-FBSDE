@@ -104,7 +104,7 @@ class BaseSDE(metaclass=abc.ABCMeta):
             _t=t if idx==ts.shape[0]-1 else ts[idx+1]
 
             f = self.f(x,t,direction)
-            z =policy(x,t)
+            z = policy(x,t)
             dw = self.dw(x)
 
             t_idx = idx if direction=='forward' else len(ts)-idx-1

@@ -62,6 +62,27 @@ def build_data_sampler(opt, batch_size):
     else:
         raise RuntimeError()
 
+def build_perturbed_data_sampler(opt, batch_size, snr):
+    if util.is_toy_dataset(opt):
+        return {
+            'gmm': PerturbedMixMultiVariateNormal,
+            'checkerboard': PerturbedCheckerBoard,
+            'moon-to-spiral': PerturbedSpiral,
+        }.get(opt.problem_name)(snr, batch_size)
+
+    elif util.is_image_dataset(opt):
+        dataset_generator = {
+            'mnist':      generate_mnist_dataset,
+            'celebA32':   generate_celebA_dataset,
+            'celebA64':   generate_celebA_dataset,
+            'cifar10':    generate_cifar10_dataset,
+        }.get(opt.problem_name)
+        dataset = dataset_generator(opt)
+        return PerturbedDataSampler(snr, dataset, batch_size, opt.device)
+
+    else:
+        raise RuntimeError()
+
 class MixMultiVariateNormal:
     def __init__(self, batch_size, radius=12, num=8, sigmas=None):
 
@@ -92,6 +113,18 @@ class MixMultiVariateNormal:
         samples=torch.cat(samples,dim=0)
         return samples
 
+class PerturbedMixMultiVariateNormal(MixMultiVariateNormal):
+    def __init__(self, snr, batch_size, radius=12, num=8, sigmas=None):
+        super().__init__(batch_size, radius=12, num=8, sigmas=None)
+        self.snr = snr
+    
+    def sample(self):
+        not_perturbed_sample = super().sample()
+        alpha = torch.sqrt(self.snr/(1+self.snr))
+        sigma = 1/torch.sqrt(1+self.snr)
+        perturbed_sample = alpha * not_perturbed_sample + sigma * torch.rand_like(not_perturbed_sample)
+        return perturbed_sample
+
 class CheckerBoard:
     def __init__(self, batch_size):
         self.batch_size = batch_size
@@ -116,6 +149,18 @@ class CheckerBoard:
         sample=sample[0:n,:]
         return sample
 
+class PerturbedCheckerBoard(CheckerBoard):
+    def __init__(self, snr, batch_size):
+        super().__init__(batch_size)
+        self.snr = snr
+    
+    def sample(self):
+        not_perturbed_sample = super().sample()
+        alpha = torch.sqrt(self.snr/(1+self.snr))
+        sigma = 1/torch.sqrt(1+self.snr)
+        perturbed_sample = alpha * not_perturbed_sample + sigma * torch.rand_like(not_perturbed_sample)
+        return perturbed_sample
+
 class Spiral:
     def __init__(self, batch_size):
         self.batch_size = batch_size
@@ -131,6 +176,18 @@ class Spiral:
         samples = samples[:,0:2]
         return torch.Tensor(samples)
 
+class PerturbedSpiral(Spiral):
+    def __init__(self, snr, batch_size):
+        super().__init__(batch_size)
+        self.snr = snr
+    
+    def sample(self):
+        not_perturbed_sample = super().sample()
+        alpha = torch.sqrt(self.snr/(1+self.snr))
+        sigma = 1/torch.sqrt(1+self.snr)
+        perturbed_sample = alpha * not_perturbed_sample + sigma * torch.rand_like(not_perturbed_sample)
+        return perturbed_sample
+
 class Moon:
     def __init__(self, batch_size):
         self.batch_size = batch_size
@@ -145,6 +202,18 @@ class Moon:
         x = np.concatenate([u, v], axis=0)
         return torch.Tensor(x)
 
+class PerturbedMoon(Moon):
+    def __init__(self, snr, batch_size):
+        super().__init__(batch_size)
+        self.snr = snr
+    
+    def sample(self):
+        not_perturbed_sample = super().sample()
+        alpha = torch.sqrt(self.snr/(1+self.snr))
+        sigma = 1/torch.sqrt(1+self.snr)
+        perturbed_sample = alpha * not_perturbed_sample + sigma * torch.rand_like(not_perturbed_sample)
+        return perturbed_sample
+
 class DataSampler: # a dump data sampler
     def __init__(self, dataset, batch_size, device):
         self.num_sample = len(dataset)
@@ -155,6 +224,18 @@ class DataSampler: # a dump data sampler
     def sample(self):
         data = next(self.dataloader)
         return data[0].to(self.device)
+
+class PerturbedDataSampler(DataSampler): #perturbed dump data sampler
+    def __init__(self, snr, dataset, batch_size, device):
+        super().__init__(dataset, batch_size, device)
+        self.snr = snr
+    
+    def sample(self):
+        not_perturbed_sample = super().sample()
+        alpha = torch.sqrt(self.snr/(1+self.snr))
+        sigma = 1/torch.sqrt(1+self.snr)
+        perturbed_sample = alpha * not_perturbed_sample + sigma * torch.rand_like(not_perturbed_sample)
+        return perturbed_sample
 
 class PriorSampler: # a dump prior sampler to align with DataSampler
     def __init__(self, prior, batch_size, device):
@@ -167,6 +248,8 @@ class PriorSampler: # a dump prior sampler to align with DataSampler
 
     def sample(self):
         return self.prior.sample([self.batch_size]).to(self.device)
+
+
 
 def setup_loader(dataset, batch_size):
     train_loader = DataLoaderX(dataset, batch_size=batch_size,shuffle=True,num_workers=0,drop_last=True)

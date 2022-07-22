@@ -16,6 +16,7 @@ import data
 import util
 
 from ipdb import set_trace as debug
+import random
 
 def build_optimizer_ema_sched(opt, policy):
     direction = policy.direction
@@ -56,8 +57,121 @@ def activate_policy(policy):
     policy.train()
     return policy
 
+class MultiStageRunner():
+    def __init__(self, opt):
+        super(MultiStageRunner,self).__init__()
+        self.start_time = time.time()
+
+        #multistage settings
+        self.SNR_max = opt.SNR_max
+        self.SNR_min = opt.SNR_min
+        
+        self.num_outer_iterations = opt.num_outer_iterations
+        self.max_num_intervals = opt.max_num_intervals
+        self.base_discretisation = opt.base_discretisation
+
+        # build boundary distribution (p: target, q: prior)
+        self.p, self.q = data.build_boundary_distribution(opt)
+        # build dynamics, forward (z_f) and backward (z_b) policies
+        self.dyn = sde.build(opt, self.p, self.q)
+        self.z_f = policy.build(opt, self.dyn, 'forward')  # p -> q
+        self.z_b = policy.build(opt, self.dyn, 'backward') # q -> p
+        self.optimizer_f, self.ema_f, self.sched_f = build_optimizer_ema_sched(opt, self.z_f)
+        self.optimizer_b, self.ema_b, self.sched_b = build_optimizer_ema_sched(opt, self.z_b)
+
+    def setup_intermediate_distributions(self, opt, SNR_max, SNR_min, num_intervals):
+        #return {interval_number:[p,q]}
+        snr_vals = np.logspace(SNR_max, SNR_min, num=num_intervals+1)
+
+        intermediate_distributions = {}
+        for i in range(num_intervals):
+            if i < num_intervals - 1:
+                p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i])
+                q = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i+1])
+            elif i == num_intervals - 1:
+                p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i])
+                q = data.build_prior_sampler(opt, opt.samp_bs)
+            
+            intermediate_distributions[i] = [p, q]
+        
+        return intermediate_distributions
+
+    def get_optimizer_ema_sched(self, z):
+        if z == self.z_f:
+            return self.optimizer_f, self.ema_f, self.sched_f
+        elif z == self.z_b:
+            return self.optimizer_b, self.ema_b, self.sched_b
+        else:
+            raise RuntimeError()
+
+    def sb_joint_train(self, opt):
+        assert not util.is_image_dataset(opt)
+        policy_f, policy_b = self.z_f, self.z_b
+        policy_f = activate_policy(policy_f)
+        policy_b = activate_policy(policy_b)
+        optimizer_f, _, sched_f = self.get_optimizer_ema_sched(policy_f)
+        optimizer_b, _, sched_b = self.get_optimizer_ema_sched(policy_b)
+
+        outer_iterations = self.num_outer_iterations
+        num_intervals = self.max_num_intervals
+        for out_it in range(outer_iterations):
+            inter_pq_s = self.setup_intermediate_distributions(opt, self.SNR_max, self.SNR_min, num_intervals)
+            self.sb_outer_joint_iteration(opt, policy_f, policy_b, 
+                                               optimizer_f, optimizer_b, 
+                                               sched_f, sched_b,
+                                               inter_pq_s, self.base_discretisation * 2 ** out_it)
+            num_intervals = num_intervals // 2
+
+            #marks the end of the outer iteration. We should have a solution of the intermediate num_intervals SBPs.
+            #when num_intervals=1, we should have the solution of the target SBP problem.
+
+    def sb_outer_joint_iteration(self, opt, 
+                                       policy_f, policy_b, 
+                                       optimizer_f, optimizer_b, 
+                                       sched_f, sched_b,
+                                       inter_pq_s, discretisation):
+
+        num_intervals = len(inter_pq_s.keys())
+
+        batch_x = opt.samp_bs
+        for it in range(opt.num_itr):
+
+            optimizer_f.zero_grad()
+            optimizer_b.zero_grad()
+
+            interval_key = random.choice(inter_pq_s.keys())
+            p, q = inter_pq_s[interval_key]
+
+            interval_dyn = sde.build(opt, p, q)
+            ts = torch.linspace(p.time, q.time, discretisation)
+
+            xs_f, zs_f, x_term_f = interval_dyn.sample_traj(ts, policy_f, save_traj=True)
+            xs_f = util.flatten_dim01(xs_f)
+            zs_f = util.flatten_dim01(zs_f)
+            _ts = ts.repeat(batch_x)
+
+            loss = compute_sb_nll_joint_train(
+                opt, batch_x, interval_dyn, _ts, xs_f, zs_f, x_term_f, policy_b
+            )
+            loss.backward()
+
+            optimizer_f.step()
+            optimizer_b.step()
+
+            if sched_f is not None: sched_f.step()
+            if sched_b is not None: sched_b.step()
+
+            self.log_sb_joint_train(opt, it, loss, optimizer_f, opt.num_itr)
+
+            # evaluate
+            if (it+1)%opt.eval_itr==0:
+                with torch.no_grad():
+                    xs_b, _, _ = self.dyn.sample_traj(ts, policy_b, save_traj=True)
+                util.save_toy_npy_traj(opt, 'train_it{}'.format(it+1), xs_b.detach().cpu().numpy())
+
+
 class Runner():
-    def __init__(self,opt):
+    def __init__(self, opt):
         super(Runner,self).__init__()
 
         self.start_time = time.time()
