@@ -63,8 +63,8 @@ class MultiStageRunner():
         self.start_time = time.time()
 
         #multistage settings
-        self.SNR_max = opt.SNR_max
-        self.SNR_min = opt.SNR_min
+        self.log_SNR_max = opt.log_SNR_max
+        self.log_SNR_min = opt.log_SNR_min
         
         self.num_outer_iterations = opt.num_outer_iterations
         self.max_num_intervals = opt.max_num_intervals
@@ -79,9 +79,9 @@ class MultiStageRunner():
         self.optimizer_f, self.ema_f, self.sched_f = build_optimizer_ema_sched(opt, self.z_f)
         self.optimizer_b, self.ema_b, self.sched_b = build_optimizer_ema_sched(opt, self.z_b)
 
-    def setup_intermediate_distributions(self, opt, SNR_max, SNR_min, num_intervals):
+    def setup_intermediate_distributions(self, opt, log_SNR_max, log_SNR_min, num_intervals):
         #return {interval_number:[p,q]}
-        snr_vals = np.logspace(SNR_max, SNR_min, num=num_intervals+1)
+        snr_vals = np.logspace(log_SNR_max, log_SNR_min, num=num_intervals+1)
 
         intermediate_distributions = {}
         for i in range(num_intervals):
@@ -115,7 +115,7 @@ class MultiStageRunner():
         outer_iterations = self.num_outer_iterations
         num_intervals = self.max_num_intervals
         for out_it in range(outer_iterations):
-            inter_pq_s = self.setup_intermediate_distributions(opt, self.SNR_max, self.SNR_min, num_intervals)
+            inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
             self.sb_outer_joint_iteration(opt, policy_f, policy_b, 
                                                optimizer_f, optimizer_b, 
                                                sched_f, sched_b,
