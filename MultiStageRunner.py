@@ -79,9 +79,20 @@ class MultiStageRunner():
         self.optimizer_f, self.ema_f, self.sched_f = build_optimizer_ema_sched(opt, self.z_f)
         self.optimizer_b, self.ema_b, self.sched_b = build_optimizer_ema_sched(opt, self.z_b)
 
+        if opt.load:
+            util.restore_checkpoint(opt, self, opt.load)
+
+        if opt.log_tb: # tensorboard related things
+            self.it_f = 0
+            self.it_b = 0
+            self.writer=SummaryWriter(
+                log_dir=os.path.join('runs', opt.log_fn) if opt.log_fn is not None else None
+            )
+
     def setup_intermediate_distributions(self, opt, log_SNR_max, log_SNR_min, num_intervals):
         #return {interval_number:[p,q]}
         snr_vals = np.logspace(log_SNR_max, log_SNR_min, num=num_intervals+1)
+        times = torch.linspace(opt.t0, opt.T, num_intervals+1)
 
         intermediate_distributions = {}
         for i in range(num_intervals):
@@ -91,7 +102,9 @@ class MultiStageRunner():
             elif i == num_intervals - 1:
                 p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i])
                 q = data.build_prior_sampler(opt, opt.samp_bs)
-            
+                
+            p.time = times[i]
+            q.time = times[i+1]
             intermediate_distributions[i] = [p, q]
         
         return intermediate_distributions
@@ -164,11 +177,42 @@ class MultiStageRunner():
             self.log_sb_joint_train(opt, it, loss, optimizer_f, opt.num_itr)
 
             # evaluate
-            if (it+1)%opt.eval_itr==0:
+            if (it+1) % opt.eval_itr==0:
                 with torch.no_grad():
                     xs_b, _, _ = self.dyn.sample_traj(ts, policy_b, save_traj=True)
                 util.save_toy_npy_traj(opt, 'train_it{}'.format(it+1), xs_b.detach().cpu().numpy())
 
+    def log_sb_joint_train(self, opt, it, loss, optimizer, num_itr):
+        self._print_train_itr(it, loss, optimizer, num_itr, name='SB joint')
+        if opt.log_tb:
+            step = self.update_count('backward')
+            self.log_tb(step, loss.detach(), 'loss', 'SB_joint')
+
+    def _print_train_itr(self, it, loss, optimizer, num_itr, name):
+        time_elapsed = util.get_time(time.time()-self.start_time)
+        lr = optimizer.param_groups[0]['lr']
+        print("[{0}] train_it {1}/{2} | lr:{3} | loss:{4} | time:{5}"
+            .format(
+                util.magenta(name),
+                util.cyan("{}".format(1+it)),
+                num_itr,
+                util.yellow("{:.2e}".format(lr)),
+                util.red("{:.4f}".format(loss.item())),
+                util.green("{0}:{1:02d}:{2:05.2f}".format(*time_elapsed)),
+        ))
+    
+    def update_count(self, direction):
+        if direction == 'forward':
+            self.it_f += 1
+            return self.it_f
+        elif direction == 'backward':
+            self.it_b += 1
+            return self.it_b
+        else:
+            raise RuntimeError()
+    
+    def log_tb(self, step, val, name, tag):
+        self.writer.add_scalar(os.path.join(tag,name), val, global_step=step)
 
 class Runner():
     def __init__(self, opt):
