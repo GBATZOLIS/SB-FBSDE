@@ -133,8 +133,8 @@ class Runner():
 
     def sb_alternate_train_stage(self, opt, stage, epoch, direction, reused_sampler=None):
         policy_opt, policy_impt = {
-            'forward':  [self.z_f, self.z_b], # train forwad,   sample from backward
-            'backward': [self.z_b, self.z_f], # train backward, sample from forward
+            'forward':  [self.z_f, self.z_b], # train forward,   sample from backward
+            'backward': [self.z_b, self.z_f], # train backward,  sample from forward
         }.get(direction)
 
         for ep in range(epoch):

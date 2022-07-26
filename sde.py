@@ -24,7 +24,7 @@ def build(opt, p, q):
 class BaseSDE(metaclass=abc.ABCMeta):
     def __init__(self, opt, p, q):
         self.opt = opt
-        self.dt=opt.T/opt.interval
+        self.dt=opt.T/opt.interval #This needs modification for the Divide and Conquer method. This value would change every time we move from one outer iteration to the next.
         self.p = p # data distribution
         self.q = q # prior distribution
 

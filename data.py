@@ -116,7 +116,7 @@ class MixMultiVariateNormal:
 class PerturbedMixMultiVariateNormal(MixMultiVariateNormal):
     def __init__(self, snr, batch_size, radius=12, num=8, sigmas=None):
         super().__init__(batch_size, radius=12, num=8, sigmas=None)
-        self.snr = snr
+        self.snr = torch.tensor(snr)
     
     def sample(self):
         not_perturbed_sample = super().sample()
@@ -152,7 +152,7 @@ class CheckerBoard:
 class PerturbedCheckerBoard(CheckerBoard):
     def __init__(self, snr, batch_size):
         super().__init__(batch_size)
-        self.snr = snr
+        self.snr = torch.tensor(snr)
     
     def sample(self):
         not_perturbed_sample = super().sample()
@@ -179,7 +179,7 @@ class Spiral:
 class PerturbedSpiral(Spiral):
     def __init__(self, snr, batch_size):
         super().__init__(batch_size)
-        self.snr = snr
+        self.snr = torch.tensor(snr)
     
     def sample(self):
         not_perturbed_sample = super().sample()
@@ -205,7 +205,7 @@ class Moon:
 class PerturbedMoon(Moon):
     def __init__(self, snr, batch_size):
         super().__init__(batch_size)
-        self.snr = snr
+        self.snr = torch.tensor(snr)
     
     def sample(self):
         not_perturbed_sample = super().sample()
@@ -228,7 +228,7 @@ class DataSampler: # a dump data sampler
 class PerturbedDataSampler(DataSampler): #perturbed dump data sampler
     def __init__(self, snr, dataset, batch_size, device):
         super().__init__(dataset, batch_size, device)
-        self.snr = snr
+        self.snr = torch.tensor(snr)
     
     def sample(self):
         not_perturbed_sample = super().sample()

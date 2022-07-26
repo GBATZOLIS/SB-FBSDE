@@ -152,11 +152,13 @@ class MultiStageRunner():
             optimizer_f.zero_grad()
             optimizer_b.zero_grad()
 
-            interval_key = random.choice(inter_pq_s.keys())
+            interval_key = random.choice(list(inter_pq_s.keys()))
             p, q = inter_pq_s[interval_key]
 
             interval_dyn = sde.build(opt, p, q)
             ts = torch.linspace(p.time, q.time, discretisation)
+            new_dt = ts[1]-ts[0]
+            interval_dyn.dt = new_dt
 
             xs_f, zs_f, x_term_f = interval_dyn.sample_traj(ts, policy_f, save_traj=True)
             xs_f = util.flatten_dim01(xs_f)
