@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch.optim import SGD, RMSprop, Adagrad, AdamW, lr_scheduler, Adam
 from torch.utils.tensorboard import SummaryWriter
-from torch_ema import ExponentialMovingAverage
+from torch_ema import TorchEMA as ExponentialMovingAverage
 
 import policy
 import sde
