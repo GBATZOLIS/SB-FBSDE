@@ -7,7 +7,8 @@ import torch
 import torch.nn.functional as F
 from torch.optim import SGD, RMSprop, Adagrad, AdamW, lr_scheduler, Adam
 from torch.utils.tensorboard import SummaryWriter
-from torch_ema import TorchEMA as ExponentialMovingAverage
+#from torch_ema import TorchEMA as ExponentialMovingAverage
+from torch_ema import ExponentialMovingAverage
 
 import policy
 import sde
@@ -132,7 +133,7 @@ class MultiStageRunner():
         return xs, zs, ts
 
 
-    def alternating_policy_update(self, direction, dyn, ts, tr_steps=1):
+    def alternating_policy_update(self, opt, direction, dyn, ts, tr_steps=1):
         policy_opt, policy_impt = {
             'forward':  [self.z_f, self.z_b], # train forward,   sample from backward
             'backward': [self.z_b, self.z_f], # train backward, sample from forward
@@ -149,7 +150,16 @@ class MultiStageRunner():
 
             xs, zs_impt, ts = self.sample_train_data(opt, policy_impt, dyn, ts)
 
+            xs.requires_grad_(True)
+            xs=util.flatten_dim01(xs)
+            zs_impt=util.flatten_dim01(zs_impt)
+            ts=ts.repeat(batch_x)
+            #print(ts.shape)
+            assert xs.shape[0] == ts.shape[0]
+            assert zs_impt.shape[0] == ts.shape[0]
+
             # -------- compute loss and backprop --------
+            
             loss, zs = compute_sb_nll_alternate_train(
                 opt, dyn, ts, xs, zs_impt, policy_opt, return_z=True
             )
@@ -184,8 +194,8 @@ class MultiStageRunner():
             new_dt = ts[1]-ts[0]
             interval_dyn.dt = new_dt
 
-            self.alternating_policy_update('forward', interval_dyn, ts, tr_steps=1)
-            self.alternating_policy_update('backward', interval_dyn, ts, tr_steps=1)
+            self.alternating_policy_update(opt, 'forward', interval_dyn, ts, tr_steps=1)
+            self.alternating_policy_update(opt, 'backward', interval_dyn, ts, tr_steps=1)
 
 
     def sb_alterating_train(self, opt):

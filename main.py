@@ -36,7 +36,8 @@ def main(opt):
     
     elif opt.training_scheme == 'divideNconquer':
         run = MultiStageRunner(opt)
-        run.sb_joint_train(opt)
+        #run.sb_joint_train(opt)
+        run.sb_alterating_train(opt)
 
 if not opt.cpu:
     with torch.cuda.device(opt.gpu):

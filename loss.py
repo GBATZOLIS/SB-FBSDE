@@ -41,13 +41,15 @@ def compute_sb_nll_alternate_train(opt, dyn, ts, xs, zs_impt, policy_opt, return
     assert xs.requires_grad
     assert not zs_impt.requires_grad
 
-    batch_x = opt.train_bs_x
-    batch_t = opt.train_bs_t
+    #batch_x = opt.train_bs_x
+    #batch_t = opt.train_bs_t
+    batch_x_times_batch_t = ts.size(0)
 
     with torch.enable_grad():
         div_gz, zs = compute_div_gz(opt, dyn, ts, xs, policy_opt, return_zs=True)
         loss = zs*(0.5*zs + zs_impt) + div_gz
-        loss = torch.sum(loss * dyn.dt) / batch_x / batch_t  # sum over x_dim and T, mean over batch
+        #loss = torch.sum(loss * dyn.dt) / batch_x / batch_t  # sum over x_dim and T, mean over batch
+        loss = torch.sum(loss * dyn.dt) / batch_x_times_batch_t  # sum over x_dim and T, mean over batch
     return loss, zs if return_z else loss
 
 
