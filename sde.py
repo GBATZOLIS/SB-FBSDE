@@ -28,6 +28,8 @@ class BaseSDE(metaclass=abc.ABCMeta):
         self.p = p # data distribution
         self.q = q # prior distribution
 
+        self.device = opt.device
+
     @abc.abstractmethod
     def _f(self, x, t):
         raise NotImplementedError
@@ -88,7 +90,7 @@ class BaseSDE(metaclass=abc.ABCMeta):
         init_dist = self.p if direction=='forward' else self.q
         ts = ts if direction=='forward' else torch.flip(ts,dims=[0])
 
-        x = init_dist.sample() # [bs, x_dim]
+        x = init_dist.sample().to(self.device) # [bs, x_dim]
 
         apply_trick1, apply_trick2, apply_trick3 = compute_tricks_condition(opt, apply_trick, direction)
 
@@ -99,7 +101,7 @@ class BaseSDE(metaclass=abc.ABCMeta):
         zs = torch.empty_like(xs) if save_traj else None
 
         # don't use tqdm for fbsde since it'll resample every itr
-        _ts = ts if opt.train_method=='joint' else tqdm(ts,desc=util.yellow("Propagating Dynamics..."))
+        _ts = ts if opt.train_method=='joint' else ts #tqdm(ts,desc=util.yellow("Propagating Dynamics..."))
         for idx, t in enumerate(_ts):
             _t=t if idx==ts.shape[0]-1 else ts[idx+1]
 

@@ -161,7 +161,9 @@ class MultiStageRunner():
             assert zs_impt.shape[0] == ts.shape[0]
 
             # -------- compute loss and backprop --------
-            
+            xs=xs.to(opt.device)
+            zs_impt=zs_impt.to(opt.device)
+
             loss, zs = compute_sb_nll_alternate_train(
                 opt, dyn, ts, xs, zs_impt, policy_opt, return_z=True
             )
@@ -185,7 +187,6 @@ class MultiStageRunner():
         return losses
 
 
-
     def sb_outer_alternating_iteration(self, opt,
                                             optimizer_f, optimizer_b, 
                                             sched_f, sched_b, 
@@ -200,6 +201,8 @@ class MultiStageRunner():
             ts = torch.linspace(p.time, q.time, discretisation)
             new_dt = ts[1]-ts[0]
             interval_dyn.dt = new_dt
+            ts = ts.to(opt.device)
+            
 
             losses = self.alternating_policy_update(opt, 'forward', interval_dyn, ts, tr_steps=tr_steps)
             self.log_multistage_sb_alternate_train(opt, outer_it, inner_it, 'forward', losses)
@@ -223,7 +226,7 @@ class MultiStageRunner():
             self.sb_outer_alternating_iteration(opt,
                                             optimizer_f, optimizer_b, 
                                             sched_f, sched_b, 
-                                            inter_pq_s, self.base_discretisation * 2 ** out_it, 
+                                            inter_pq_s, self.base_discretisation * 2 ** outer_it, 
                                             tr_steps, outer_it)
             num_intervals = num_intervals // 2
 
@@ -302,7 +305,7 @@ class MultiStageRunner():
             self.log_tb(step, loss.detach(), 'loss', 'SB_joint')
 
     def log_multistage_sb_alternate_train(self, opt, outer_it, inner_it, direction, losses):
-        avg_loss = torch.mean(losses).item()
+        avg_loss = torch.mean(torch.tensor(losses)).item()
         update_steps = len(losses)
         print("direction:[{0}]| outer it:{1}/{2} | inner it:{3}/{4} | update steps: {5} | loss:{6} ".format(
             util.magenta("SB {}".format(direction)),
@@ -310,7 +313,7 @@ class MultiStageRunner():
             util.cyan("{}".format(opt.num_outer_iterations)),
             util.cyan("{}".format(inner_it)),
             util.cyan("{}".format(opt.num_inner_iterations)),
-            util.green("{}".format(update_steps))
+            util.green("{}".format(update_steps)),
             util.red("{}".format(avg_loss)),
         ))
 
