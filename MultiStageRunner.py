@@ -145,7 +145,9 @@ class MultiStageRunner():
         optimizer, ema, sched = self.get_optimizer_ema_sched(policy_opt)
 
         batch_x = opt.samp_bs
-        for i in range(tr_steps):
+        batch_t = ts.size(0)
+        losses = []
+        for it in range(tr_steps):
             optimizer.zero_grad()
 
             xs, zs_impt, ts = self.sample_train_data(opt, policy_impt, dyn, ts)
@@ -172,20 +174,25 @@ class MultiStageRunner():
             ema.update()
             if sched is not None: sched.step()
 
+            losses.append(loss)
             # -------- logging --------
-            #zs = util.unflatten_dim01(zs, [len(samp_x_idx), len(samp_t_idx)])
+            #zs = util.unflatten_dim01(zs, [batch_x, batch_t])
             #zs_impt = zs_impt.reshape(zs.shape)
             #self.log_sb_alternate_train(
             #    opt, it, ep, stage, loss, zs, zs_impt, optimizer, direction, num_epoch
             #)
 
+        return losses
+
+
 
     def sb_outer_alternating_iteration(self, opt,
                                             optimizer_f, optimizer_b, 
                                             sched_f, sched_b, 
-                                            inter_pq_s, discretisation):
+                                            inter_pq_s, discretisation, 
+                                            tr_steps, outer_it):
 
-        for it in range(opt.num_itr):
+        for inner_it in range(opt.num_itr):
             interval_key = random.choice(list(inter_pq_s.keys()))
             p, q = inter_pq_s[interval_key]
 
@@ -194,9 +201,11 @@ class MultiStageRunner():
             new_dt = ts[1]-ts[0]
             interval_dyn.dt = new_dt
 
-            self.alternating_policy_update(opt, 'forward', interval_dyn, ts, tr_steps=1)
-            self.alternating_policy_update(opt, 'backward', interval_dyn, ts, tr_steps=1)
-
+            losses = self.alternating_policy_update(opt, 'forward', interval_dyn, ts, tr_steps=tr_steps)
+            self.log_multistage_sb_alternate_train(opt, outer_it, inner_it, 'forward', losses)
+            
+            losses = self.alternating_policy_update(opt, 'backward', interval_dyn, ts, tr_steps=tr_steps)
+            self.log_multistage_sb_alternate_train(opt, outer_it, inner_it, 'backward', losses)
 
     def sb_alterating_train(self, opt):
         assert not util.is_image_dataset(opt)
@@ -208,14 +217,15 @@ class MultiStageRunner():
         
         outer_iterations = self.num_outer_iterations
         num_intervals = self.max_num_intervals
-        for out_it in range(outer_iterations):
+        tr_steps=opt.policy_updates
+        for outer_it in range(outer_iterations):
             inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
             self.sb_outer_alternating_iteration(opt,
                                             optimizer_f, optimizer_b, 
                                             sched_f, sched_b, 
-                                            inter_pq_s, self.base_discretisation * 2 ** out_it)
+                                            inter_pq_s, self.base_discretisation * 2 ** out_it, 
+                                            tr_steps, outer_it)
             num_intervals = num_intervals // 2
-
 
     def sb_joint_train(self, opt):
         assert not util.is_image_dataset(opt)
@@ -290,6 +300,44 @@ class MultiStageRunner():
         if opt.log_tb:
             step = self.update_count('backward')
             self.log_tb(step, loss.detach(), 'loss', 'SB_joint')
+
+    def log_multistage_sb_alternate_train(self, opt, outer_it, inner_it, direction, losses):
+        avg_loss = torch.mean(losses).item()
+        update_steps = len(losses)
+        print("direction:[{0}]| outer it:{1}/{2} | inner it:{3}/{4} | update steps: {5} | loss:{6} ".format(
+            util.magenta("SB {}".format(direction)),
+            util.cyan("{}".format(outer_it)),
+            util.cyan("{}".format(opt.num_outer_iterations)),
+            util.cyan("{}".format(inner_it)),
+            util.cyan("{}".format(opt.num_inner_iterations)),
+            util.green("{}".format(update_steps))
+            util.red("{}".format(avg_loss)),
+        ))
+
+    def log_sb_alternate_train(self, opt, it, ep, stage, loss, zs, zs_impt, optimizer, direction, num_epoch):
+        time_elapsed = util.get_time(time.time()-self.start_time)
+        lr = optimizer.param_groups[0]['lr']
+        print("[{0}] stage {1}/{2} | ep {3}/{4} | train_it {5}/{6} | lr:{7} | loss:{8} | time:{9}"
+            .format(
+                util.magenta("SB {}".format(direction)),
+                util.cyan("{}".format(1+stage)),
+                opt.num_stage,
+                util.cyan("{}".format(1+ep)),
+                num_epoch,
+                util.cyan("{}".format(1+it+opt.num_itr*ep)),
+                opt.num_itr*num_epoch,
+                util.yellow("{:.2e}".format(lr)),
+                util.red("{:+.4f}".format(loss.item())),
+                util.green("{0}:{1:02d}:{2:05.2f}".format(*time_elapsed)),
+        ))
+        if opt.log_tb:
+            step = self.update_count(direction)
+            neg_elbo = loss + util.compute_z_norm(zs_impt, self.dyn.dt)
+            self.log_tb(step, loss.detach(), 'loss', 'SB_'+direction) # SB surrogate loss (see Eq 18 & 19 in the paper)
+            self.log_tb(step, neg_elbo.detach(), 'neg_elbo', 'SB_'+direction) # negative ELBO (see Eq 16 in the paper)
+            # if direction == 'forward':
+            #     z_norm = util.compute_z_norm(zs, self.dyn.dt)
+            #     self.log_tb(step, z_norm.detach(), 'z_norm', 'SB_forward')
 
     def _print_train_itr(self, it, loss, optimizer, num_itr, name):
         time_elapsed = util.get_time(time.time()-self.start_time)
