@@ -323,7 +323,7 @@ class Runner():
             self.log_sb_joint_train(opt, it, loss, optimizer_f, opt.num_itr)
 
             # evaluate
-            if (it+1)%opt.eval_itr==0:
+            if (it+1) % opt.eval_itr==0:
                 with torch.no_grad():
                     xs_b, _, _ = self.dyn.sample_traj(ts, policy_b, save_traj=True)
                 util.save_toy_npy_traj(opt, 'train_it{}'.format(it+1), xs_b.detach().cpu().numpy())

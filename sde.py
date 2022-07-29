@@ -12,7 +12,7 @@ def _assert_increasing(name, ts):
     assert (ts[1:] > ts[:-1]).all(), '{} must be strictly increasing'.format(name)
 
 def build(opt, p, q):
-    print(util.magenta("build base sde..."))
+    #print(util.magenta("build base sde..."))
 
     return {
         'vp': VPSDE,
@@ -78,7 +78,7 @@ class BaseSDE(metaclass=abc.ABCMeta):
             print('trick applied,sigma_min{}'.format(self.sigma_min))
         return x
 
-    def sample_traj(self, ts, policy, corrector=None, apply_trick=True, save_traj=True):
+    def sample_traj(self, ts, policy, corrector=None, apply_trick=True, save_traj=True, initial_sample=None):
 
         # first we need to know whether we're doing forward or backward sampling
         opt = self.opt
@@ -90,7 +90,10 @@ class BaseSDE(metaclass=abc.ABCMeta):
         init_dist = self.p if direction=='forward' else self.q
         ts = ts if direction=='forward' else torch.flip(ts,dims=[0])
 
-        x = init_dist.sample().to(self.device) # [bs, x_dim]
+        if initial_sample is None:
+            x = init_dist.sample().to(self.device) # [bs, x_dim]
+        else:
+            x = initial_sample
 
         apply_trick1, apply_trick2, apply_trick3 = compute_tricks_condition(opt, apply_trick, direction)
 

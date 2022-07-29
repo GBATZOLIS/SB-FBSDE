@@ -18,6 +18,10 @@ import util
 
 from ipdb import set_trace as debug
 import random
+from tqdm import tqdm
+
+import matplotlib.pyplot as plt
+
 
 def build_optimizer_ema_sched(opt, policy):
     direction = policy.direction
@@ -92,7 +96,8 @@ class MultiStageRunner():
 
     def setup_intermediate_distributions(self, opt, log_SNR_max, log_SNR_min, num_intervals):
         #return {interval_number:[p,q]}
-        snr_vals = np.logspace(log_SNR_max, log_SNR_min, num=num_intervals+1)
+        snr_vals = np.logspace(log_SNR_max, log_SNR_min, num=num_intervals+1, base=np.exp(1))
+        #print(snr_vals)
         times = torch.linspace(opt.t0, opt.T, num_intervals+1)
 
         intermediate_distributions = {}
@@ -177,12 +182,6 @@ class MultiStageRunner():
             if sched is not None: sched.step()
 
             losses.append(loss)
-            # -------- logging --------
-            #zs = util.unflatten_dim01(zs, [batch_x, batch_t])
-            #zs_impt = zs_impt.reshape(zs.shape)
-            #self.log_sb_alternate_train(
-            #    opt, it, ep, stage, loss, zs, zs_impt, optimizer, direction, num_epoch
-            #)
 
         return losses
 
@@ -193,7 +192,7 @@ class MultiStageRunner():
                                             inter_pq_s, discretisation, 
                                             tr_steps, outer_it):
 
-        for inner_it in range(opt.num_itr):
+        for inner_it in range(1, opt.num_inner_iterations+1):
             interval_key = random.choice(list(inter_pq_s.keys()))
             p, q = inter_pq_s[interval_key]
 
@@ -202,13 +201,59 @@ class MultiStageRunner():
             new_dt = ts[1]-ts[0]
             interval_dyn.dt = new_dt
             ts = ts.to(opt.device)
-            
 
             losses = self.alternating_policy_update(opt, 'forward', interval_dyn, ts, tr_steps=tr_steps)
             self.log_multistage_sb_alternate_train(opt, outer_it, inner_it, 'forward', losses)
             
             losses = self.alternating_policy_update(opt, 'backward', interval_dyn, ts, tr_steps=tr_steps)
             self.log_multistage_sb_alternate_train(opt, outer_it, inner_it, 'backward', losses)
+
+            
+            if inner_it % 25 == 0:
+                with torch.no_grad():
+                    sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
+                    sample = sample.to('cpu')
+                    print(sample.size())
+                
+                lims = {
+                        'gmm': [-17, 17],
+                        'checkerboard': [-7, 7],
+                        'moon-to-spiral':[-20, 20],
+                    }.get(opt.problem_name)
+
+                fn = 'outer_it:%d-inner_it:%d'% (outer_it, inner_it)
+                fn_pdf = os.path.join('results', opt.dir, fn+'.pdf')
+
+                plt.scatter(sample[:,0],sample[:,1], s=5)
+                plt.xlim(*lims)
+                plt.ylim(*lims)
+                plt.savefig(fn_pdf)
+                plt.clf()
+                #util.save_toy_npy_traj(opt, 'outer_it:%d-inner_it:%d'% (outer_it, inner_it), sample.detach().cpu().numpy())
+
+    @torch.no_grad()
+    def multi_sb_generate_sample(self, opt, inter_pq_s, discretisation):
+        sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
+        for i, key in tqdm(enumerate(sorted_keys)):
+            p, q = inter_pq_s[key]
+            interval_dyn = sde.build(opt, p, q)
+            ts = torch.linspace(p.time, q.time, discretisation)
+            new_dt = ts[1]-ts[0]
+            interval_dyn.dt = new_dt
+            ts = ts.to(opt.device)
+            if i==0:
+                initial_sample=None
+                print('From (t,logSNR):(%.3f,-infty) to (t,logSNR):(%.3f,%.3f)' % (q.time, p.time, np.log(p.snr)))
+            else:
+                print('From (t,logSNR):(%.3f,%.3f) to (t,logSNR):(%.3f,%.3f)' % (q.time, np.log(q.snr), p.time, np.log(p.snr)))
+            
+            _, _, initial_sample = interval_dyn.sample_traj(ts, self.z_b,
+                                                            save_traj=False,
+                                                            initial_sample=initial_sample)
+
+        sample = initial_sample
+        return initial_sample
+
 
     def sb_alterating_train(self, opt):
         assert not util.is_image_dataset(opt)
@@ -221,12 +266,12 @@ class MultiStageRunner():
         outer_iterations = self.num_outer_iterations
         num_intervals = self.max_num_intervals
         tr_steps=opt.policy_updates
-        for outer_it in range(outer_iterations):
+        for outer_it in range(1, outer_iterations+1):
             inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
             self.sb_outer_alternating_iteration(opt,
                                             optimizer_f, optimizer_b, 
                                             sched_f, sched_b, 
-                                            inter_pq_s, self.base_discretisation * 2 ** outer_it, 
+                                            inter_pq_s, self.base_discretisation * 2 ** (outer_it-1), 
                                             tr_steps, outer_it)
             num_intervals = num_intervals // 2
 
@@ -305,17 +350,26 @@ class MultiStageRunner():
             self.log_tb(step, loss.detach(), 'loss', 'SB_joint')
 
     def log_multistage_sb_alternate_train(self, opt, outer_it, inner_it, direction, losses):
+        time_elapsed = util.get_time(time.time()-self.start_time)
         avg_loss = torch.mean(torch.tensor(losses)).item()
         update_steps = len(losses)
-        print("direction:[{0}]| outer it:{1}/{2} | inner it:{3}/{4} | update steps: {5} | loss:{6} ".format(
-            util.magenta("SB {}".format(direction)),
-            util.cyan("{}".format(outer_it)),
-            util.cyan("{}".format(opt.num_outer_iterations)),
-            util.cyan("{}".format(inner_it)),
-            util.cyan("{}".format(opt.num_inner_iterations)),
-            util.green("{}".format(update_steps)),
-            util.red("{}".format(avg_loss)),
-        ))
+
+        if inner_it % 10 == 0:
+            print("direction:[{0}]| outer it:{1}/{2} | inner it:{3}/{4} | update steps: {5} | loss:{6} | time:{7} ".format(
+                util.magenta("SB {}".format(direction)),
+                util.cyan("{}".format(outer_it)),
+                util.cyan("{}".format(opt.num_outer_iterations)),
+                util.cyan("{}".format(inner_it)),
+                util.cyan("{}".format(opt.num_inner_iterations)),
+                util.green("{}".format(update_steps)),
+                util.red("{}".format(avg_loss)),
+                util.green("{0}:{1:02d}:{2:05.2f}".format(*time_elapsed))
+            ))
+        
+        if opt.log_tb:
+            step = self.update_count(direction)
+            self.log_tb(step, avg_loss, 'loss', 'SB_'+direction) # SB surrogate loss (see Eq 18 & 19 in the paper)
+
 
     def log_sb_alternate_train(self, opt, it, ep, stage, loss, zs, zs_impt, optimizer, direction, num_epoch):
         time_elapsed = util.get_time(time.time()-self.start_time)
