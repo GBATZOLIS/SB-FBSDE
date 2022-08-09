@@ -41,10 +41,11 @@ def set():
     parser.add_argument('--log-SNR-min', type=float, default=-10, help='SNR value at time 1.')
     parser.add_argument('--max-num-intervals', type=int, default=2**5, help='num intervals')
     parser.add_argument('--num-outer-iterations', type=int, default=5, help='outer loop iterations.')
-    parser.add_argument('--num-inner-iterations', type=int, default=100, help='outer loop iterations.')
-    parser.add_argument('--policy-updates', type=int, default=1, help='alternating policy updates')
+    parser.add_argument('--num-inner-iterations', type=int, default=25, help='outer loop iterations.')
+    parser.add_argument('--inner_it_save_freq', type=int, default=1)
+    parser.add_argument('--policy-updates', type=int, default=2000, help='alternating policy updates')
     parser.add_argument('--base-discretisation', type=int, default=4, help='base discretisation')
-
+    
     # --------------- SB training & sampling (corrector) ---------------
     parser.add_argument("--training-scheme", type=str, default='standard', help='training schem. Options=[standard, divideNconquer]')
     parser.add_argument("--train-method",   type=str, default=None,       help="algorithm for training SB" )
@@ -133,16 +134,22 @@ def set():
         print('[warning] reset opt.train_bs_t to {} since use_arange_t is enabled'.format(opt.interval))
         opt.train_bs_t = opt.interval
 
-    opt.ckpt_path = os.path.join('checkpoint', opt.group, opt.name)
+    opt.experiment_path = os.path.join('experiments', opt.problem_name)
+    os.makedirs(opt.experiment_path, exist_ok=True)
+
+    opt.ckpt_path = os.path.join(opt.experiment_path, 'checkpoints')
     os.makedirs(opt.ckpt_path, exist_ok=True)
+
+    opt.eval_path = os.path.join(opt.experiment_path, 'eval')
+    os.makedirs(opt.eval_path, exist_ok=True)
+
     if opt.snapshot_freq:
-        opt.eval_path = os.path.join('results', opt.dir)
         os.makedirs(os.path.join(opt.eval_path, 'forward'), exist_ok=True)
         os.makedirs(os.path.join(opt.eval_path, 'backward'), exist_ok=True)
 
     if (opt.FID_freq and util.exist_FID_ckpt(opt)) or util.is_toy_dataset(opt):
         opt.generated_data_path = os.path.join(
-            'results', opt.dir, 'backward', 'generated_data'
+            opt.eval_path, 'backward', 'generated_data'
         )
         os.makedirs(opt.generated_data_path, exist_ok=True)
     # util.check_duplication(opt)

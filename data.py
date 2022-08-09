@@ -158,7 +158,7 @@ class PerturbedCheckerBoard(CheckerBoard):
         not_perturbed_sample = super().sample()
         alpha = torch.sqrt(self.snr/(1+self.snr))
         sigma = 1/torch.sqrt(1+self.snr)
-        perturbed_sample = alpha * not_perturbed_sample + sigma * torch.rand_like(not_perturbed_sample)
+        perturbed_sample = alpha * not_perturbed_sample + sigma * torch.randn_like(not_perturbed_sample)
         return perturbed_sample
 
 class Spiral:

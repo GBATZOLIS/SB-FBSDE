@@ -90,9 +90,9 @@ class MultiStageRunner():
         if opt.log_tb: # tensorboard related things
             self.it_f = 0
             self.it_b = 0
-            self.writer=SummaryWriter(
-                log_dir=os.path.join('runs', opt.log_fn) if opt.log_fn is not None else None
-            )
+
+            log_dir = os.path.join(opt.experiment_path, 'logs')
+            self.writer=SummaryWriter(log_dir=log_dir)
 
     def setup_intermediate_distributions(self, opt, log_SNR_max, log_SNR_min, num_intervals):
         #return {interval_number:[p,q]}
@@ -155,22 +155,22 @@ class MultiStageRunner():
         for it in range(tr_steps):
             optimizer.zero_grad()
 
-            xs, zs_impt, ts = self.sample_train_data(opt, policy_impt, dyn, ts)
+            xs, zs_impt, ts_ = self.sample_train_data(opt, policy_impt, dyn, ts)
 
             xs.requires_grad_(True)
             xs=util.flatten_dim01(xs)
             zs_impt=util.flatten_dim01(zs_impt)
-            ts=ts.repeat(batch_x)
+            ts_=ts_.repeat(batch_x)
             #print(ts.shape)
-            assert xs.shape[0] == ts.shape[0]
-            assert zs_impt.shape[0] == ts.shape[0]
+            assert xs.shape[0] == ts_.shape[0]
+            assert zs_impt.shape[0] == ts_.shape[0]
 
             # -------- compute loss and backprop --------
             xs=xs.to(opt.device)
             zs_impt=zs_impt.to(opt.device)
 
             loss, zs = compute_sb_nll_alternate_train(
-                opt, dyn, ts, xs, zs_impt, policy_opt, return_z=True
+                opt, dyn, ts_, xs, zs_impt, policy_opt, return_z=True
             )
             assert not torch.isnan(loss)
 
@@ -192,7 +192,7 @@ class MultiStageRunner():
                                             inter_pq_s, discretisation, 
                                             tr_steps, outer_it):
 
-        for inner_it in range(1, opt.num_inner_iterations+1):
+        for inner_it in tqdm(range(1, opt.num_inner_iterations+1)):
             interval_key = random.choice(list(inter_pq_s.keys()))
             p, q = inter_pq_s[interval_key]
 
@@ -209,27 +209,74 @@ class MultiStageRunner():
             self.log_multistage_sb_alternate_train(opt, outer_it, inner_it, 'backward', losses)
 
             
-            if inner_it % 25 == 0:
+            if inner_it % opt.inner_it_save_freq == 0 and inner_it !=0:
+                keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
+                util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
+
+            if inner_it % 1 == 0:
                 with torch.no_grad():
                     sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
                     sample = sample.to('cpu')
-                    print(sample.size())
+                    gt_sample = inter_pq_s[0][0].sample()
                 
-                lims = {
-                        'gmm': [-17, 17],
-                        'checkerboard': [-7, 7],
-                        'moon-to-spiral':[-20, 20],
-                    }.get(opt.problem_name)
+                problem_name = opt.problem_name
+                global_step = (outer_it-1)*opt.num_inner_iterations+inner_it
 
-                fn = 'outer_it:%d-inner_it:%d'% (outer_it, inner_it)
-                fn_pdf = os.path.join('results', opt.dir, fn+'.pdf')
+                fake_scatter_image = self.tensorboard_scatter_plot(sample, problem_name, inner_it, outer_it)
+                self.writer.add_image('fake_samples', fake_scatter_image, global_step)
+                gt_scatter_image = self.tensorboard_scatter_plot(gt_sample, problem_name, inner_it, outer_it)
+                self.writer.add_image('gt_samples', gt_scatter_image, global_step)
 
-                plt.scatter(sample[:,0],sample[:,1], s=5)
-                plt.xlim(*lims)
-                plt.ylim(*lims)
-                plt.savefig(fn_pdf)
-                plt.clf()
-                #util.save_toy_npy_traj(opt, 'outer_it:%d-inner_it:%d'% (outer_it, inner_it), sample.detach().cpu().numpy())
+    def tensorboard_scatter_plot(sample, problem_name, inner_it, outer_it):
+        lims = {'gmm': [-17, 17], 'checkerboard': [-7, 7], 'moon-to-spiral':[-20, 20],
+                }.get(problem_name)
+        
+        xlim = ylim = lims
+        title = 'outer_it:%d-inner_it:%d' % (outer_it, inner_it)
+        scatter_plot_tbimage = util.scatter(sample, title=title, xlim=xlim, ylim=ylim)
+        return scatter_plot_tbimage
+
+    def scatter_plot(self, sample, problem_name, fn, save_dir):
+        lims = {'gmm': [-17, 17],
+                'checkerboard': [-7, 7],
+                'moon-to-spiral':[-20, 20],
+                }.get(problem_name)
+        
+        fn_pdf = os.path.join(save_dir, fn + '.png')
+
+        plt.scatter(sample[:,0],sample[:,1], s=5)
+        plt.xlim(*lims)
+        plt.ylim(*lims)
+        plt.savefig(fn_pdf)
+        plt.clf()
+    
+    def group_scatter_plot(self, samples, problem_name, fn, save_dir):
+        lims = {'gmm': [-17, 17],
+                'checkerboard': [-7, 7],
+                'moon-to-spiral':[-20, 20],
+                }.get(problem_name)
+
+        #we have a group of samples from intermediate distributions. Mainly for debugging purposes.
+        fn_pdf = os.path.join(save_dir, fn + '.png')
+
+        p_samples = samples[0]
+        q_samples = samples[1]
+        frames = p_samples.size(0)
+        fig, axs = plt.subplots(2, frames)
+
+        for i in range(frames):
+            axs[0, i].scatter(p_samples[i][:,0], p_samples[i][:,1], s=3)
+            axs[0, i].set_xlim(*lims)
+            axs[0, i].set_ylim(*lims)
+        
+        for i in range(frames):
+            axs[1, i].scatter(q_samples[i][:,0], q_samples[i][:,1], s=3)
+            axs[1, i].set_xlim(*lims)
+            axs[1, i].set_ylim(*lims)
+        
+        fig.tight_layout()
+        plt.savefig(fn_pdf)
+        plt.clf()
 
     @torch.no_grad()
     def multi_sb_generate_sample(self, opt, inter_pq_s, discretisation):
@@ -243,17 +290,15 @@ class MultiStageRunner():
             ts = ts.to(opt.device)
             if i==0:
                 initial_sample=None
-                print('From (t,logSNR):(%.3f,-infty) to (t,logSNR):(%.3f,%.3f)' % (q.time, p.time, np.log(p.snr)))
-            else:
-                print('From (t,logSNR):(%.3f,%.3f) to (t,logSNR):(%.3f,%.3f)' % (q.time, np.log(q.snr), p.time, np.log(p.snr)))
+            #print('From (t,logSNR):(%.3f,-infty) to (t,logSNR):(%.3f,%.3f)' % (q.time, p.time, np.log(p.snr)))
+            #else:
+            #print('From (t,logSNR):(%.3f,%.3f) to (t,logSNR):(%.3f,%.3f)' % (q.time, np.log(q.snr), p.time, np.log(p.snr)))
             
             _, _, initial_sample = interval_dyn.sample_traj(ts, self.z_b,
                                                             save_traj=False,
                                                             initial_sample=initial_sample)
-
         sample = initial_sample
         return initial_sample
-
 
     def sb_alterating_train(self, opt):
         assert not util.is_image_dataset(opt)
@@ -274,6 +319,27 @@ class MultiStageRunner():
                                             inter_pq_s, self.base_discretisation * 2 ** (outer_it-1), 
                                             tr_steps, outer_it)
             num_intervals = num_intervals // 2
+
+    def sanity_check(self, opt, sanity_check_type = 'marginals'):
+        if sanity_check_type == 'marginals':
+            #we check whether the marginal distributions are the correct ones.
+            num_intervals=4
+            intermediate_distributions = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
+            
+            p_samples, q_samples = [], []
+            for i in range(num_intervals):
+                p, q = intermediate_distributions[i]
+                p_sample = p.sample().to('cpu')
+                p_samples.append(p_sample)
+                q_sample = q.sample().to('cpu')
+                q_samples.append(q_sample)
+            
+            p_samples = torch.stack(p_samples)
+            q_samples = torch.stack(q_samples)
+            stack_samples = torch.stack([p_samples, q_samples])
+            fn = 'sanity-check-perturbation'
+            save_dir = os.path.join('results', opt.dir)
+            self.group_scatter_plot(stack_samples, opt.problem_name, fn, save_dir)
 
     def sb_joint_train(self, opt):
         assert not util.is_image_dataset(opt)
@@ -354,7 +420,7 @@ class MultiStageRunner():
         avg_loss = torch.mean(torch.tensor(losses)).item()
         update_steps = len(losses)
 
-        if inner_it % 10 == 0:
+        if inner_it % 500 == 0:
             print("direction:[{0}]| outer it:{1}/{2} | inner it:{3}/{4} | update steps: {5} | loss:{6} | time:{7} ".format(
                 util.magenta("SB {}".format(direction)),
                 util.cyan("{}".format(outer_it)),
