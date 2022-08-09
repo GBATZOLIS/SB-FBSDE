@@ -227,13 +227,15 @@ class MultiStageRunner():
                 gt_scatter_image = self.tensorboard_scatter_plot(gt_sample, problem_name, inner_it, outer_it)
                 self.writer.add_image('gt_samples', gt_scatter_image, global_step)
 
-    def tensorboard_scatter_plot(sample, problem_name, inner_it, outer_it):
+    def tensorboard_scatter_plot(self, sample, problem_name, inner_it, outer_it):
         lims = {'gmm': [-17, 17], 'checkerboard': [-7, 7], 'moon-to-spiral':[-20, 20],
                 }.get(problem_name)
         
         xlim = ylim = lims
         title = 'outer_it:%d-inner_it:%d' % (outer_it, inner_it)
-        scatter_plot_tbimage = util.scatter(sample, title=title, xlim=xlim, ylim=ylim)
+        scatter_plot_tbimage = util.scatter(sample[:,0], sample[:,1], 
+                                            title=title, xlim=xlim, 
+                                            ylim=ylim)
         return scatter_plot_tbimage
 
     def scatter_plot(self, sample, problem_name, fn, save_dir):

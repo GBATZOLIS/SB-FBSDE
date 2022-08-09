@@ -42,7 +42,7 @@ def set():
     parser.add_argument('--max-num-intervals', type=int, default=2**5, help='num intervals')
     parser.add_argument('--num-outer-iterations', type=int, default=5, help='outer loop iterations.')
     parser.add_argument('--num-inner-iterations', type=int, default=25, help='outer loop iterations.')
-    parser.add_argument('--inner_it_save_freq', type=int, default=1)
+    parser.add_argument('--inner_it_save_freq', type=int, default=5)
     parser.add_argument('--policy-updates', type=int, default=2000, help='alternating policy updates')
     parser.add_argument('--base-discretisation', type=int, default=4, help='base discretisation')
     

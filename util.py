@@ -18,7 +18,8 @@ except ImportError:
     def tqdm(x): return x
 
 from ipdb import set_trace as debug
-
+import io
+import torchvision.transforms as transforms
 
 # convert to colored strings
 def red(content): return termcolor.colored(str(content),"red",attrs=["bold"])
@@ -198,7 +199,7 @@ def scatter(x, y, **kwargs):
   buf = io.BytesIO()
   plt.savefig(buf, format='jpeg')
   buf.seek(0)
-  image = PIL.Image.open(buf)
+  image = Image.open(buf)
   image = transforms.ToTensor()(image)
   plt.close()
   return image
