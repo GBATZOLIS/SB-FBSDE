@@ -41,9 +41,9 @@ def set():
     parser.add_argument('--log-SNR-min', type=float, default=-10, help='SNR value at time 1.')
     parser.add_argument('--max-num-intervals', type=int, default=2**5, help='num intervals')
     parser.add_argument('--num-outer-iterations', type=int, default=5, help='outer loop iterations.')
-    parser.add_argument('--num-inner-iterations', type=int, default=25, help='outer loop iterations.')
+    parser.add_argument('--num-inner-iterations', type=int, default=200, help='outer loop iterations.')
     parser.add_argument('--inner_it_save_freq', type=int, default=5)
-    parser.add_argument('--policy-updates', type=int, default=2000, help='alternating policy updates')
+    parser.add_argument('--policy-updates', type=int, default=400, help='alternating policy updates')
     parser.add_argument('--base-discretisation', type=int, default=4, help='base discretisation')
     
     # --------------- SB training & sampling (corrector) ---------------
@@ -134,8 +134,12 @@ def set():
         print('[warning] reset opt.train_bs_t to {} since use_arange_t is enabled'.format(opt.interval))
         opt.train_bs_t = opt.interval
 
-    opt.experiment_path = os.path.join('experiments', opt.problem_name)
-    os.makedirs(opt.experiment_path, exist_ok=True)
+
+    opt.experiment_problem_path = os.path.join('experiments', opt.problem_name)
+    os.makedirs(opt.experiment_problem_path, exist_ok=True)
+
+    config_path = '%d_%d' % (opt.num_inner_iterations, opt.policy_updates)
+    opt.experiment_path = os.path.join(opt.experiment_problem_path, config_path)
 
     opt.ckpt_path = os.path.join(opt.experiment_path, 'checkpoints')
     os.makedirs(opt.ckpt_path, exist_ok=True)

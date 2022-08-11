@@ -13,9 +13,13 @@ def build(opt, dyn, direction):
     use_t_idx = (net_name in ['toy', 'Unet', 'DGLSB']) # t_idx is handled internally in ncsnpp
     scale_by_g = (net_name in ['ncsnpp'])
 
-    policy = SchrodingerBridgePolicy(
-        opt, direction, dyn, net, use_t_idx=use_t_idx, scale_by_g=scale_by_g
-    )
+    if opt.training_scheme == 'divideNconquer':
+        policy = MultiStageSchrodingerBridgePolicy(
+        opt, direction, dyn, net, use_t_idx=use_t_idx, scale_by_g=scale_by_g)
+    else:
+        policy = SchrodingerBridgePolicy(
+            opt, direction, dyn, net, use_t_idx=use_t_idx, scale_by_g=scale_by_g
+        )
 
     print(util.red('number of parameters is {}'.format(util.count_parameters(policy))))
     policy.to(opt.device)
@@ -79,4 +83,9 @@ class SchrodingerBridgePolicy(torch.nn.Module):
 
         return out
 
-
+class MultiStageSchrodingerBridgePolicy(SchrodingerBridgePolicy):
+    # note: scale_by_g matters only for pre-trained model
+    def __init__(self, opt, direction, dyn, net, use_t_idx=False, scale_by_g=True):
+        super(MultiStageSchrodingerBridgePolicy, self).__init__()
+        self.register_buffer('starting_outer_it', torch.tensor(1, dtype=torch.int32))
+        self.register_buffer('starting_inner_it', torch.tensor(1, dtype=torch.int32))

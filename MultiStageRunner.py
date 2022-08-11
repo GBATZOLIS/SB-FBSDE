@@ -86,6 +86,9 @@ class MultiStageRunner():
 
         if opt.load:
             util.restore_checkpoint(opt, self, opt.load)
+        
+        self.starting_outer_it = self.z_f.starting_outer_it.item()
+        self.starting_inner_it = self.z_f.starting_inner_it.item()
 
         if opt.log_tb: # tensorboard related things
             self.it_f = 0
@@ -192,7 +195,7 @@ class MultiStageRunner():
                                             inter_pq_s, discretisation, 
                                             tr_steps, outer_it):
 
-        for inner_it in tqdm(range(1, opt.num_inner_iterations+1)):
+        for inner_it in tqdm(range(self.starting_inner_it, opt.num_inner_iterations+1)):
             interval_key = random.choice(list(inter_pq_s.keys()))
             p, q = inter_pq_s[interval_key]
 
@@ -208,7 +211,9 @@ class MultiStageRunner():
             losses = self.alternating_policy_update(opt, 'backward', interval_dyn, ts, tr_steps=tr_steps)
             self.log_multistage_sb_alternate_train(opt, outer_it, inner_it, 'backward', losses)
 
-            
+            self.z_f.starting_inner_it+=1
+            self.z_b.starting_inner_it+=1
+
             if inner_it % opt.inner_it_save_freq == 0 and inner_it !=0:
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
                 util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
@@ -313,7 +318,7 @@ class MultiStageRunner():
         outer_iterations = self.num_outer_iterations
         num_intervals = self.max_num_intervals
         tr_steps=opt.policy_updates
-        for outer_it in range(1, outer_iterations+1):
+        for outer_it in range(self.starting_outer_it, outer_iterations+1):
             inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
             self.sb_outer_alternating_iteration(opt,
                                             optimizer_f, optimizer_b, 
@@ -321,6 +326,9 @@ class MultiStageRunner():
                                             inter_pq_s, self.base_discretisation * 2 ** (outer_it-1), 
                                             tr_steps, outer_it)
             num_intervals = num_intervals // 2
+
+            self.z_f.starting_outer_it += 1
+            self.z_b.starting_outer_it += 1
 
     def sanity_check(self, opt, sanity_check_type = 'marginals'):
         if sanity_check_type == 'marginals':

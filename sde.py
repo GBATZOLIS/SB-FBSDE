@@ -250,7 +250,7 @@ class SimpleSDE(BaseSDE):
         return torch.zeros_like(x)
 
     def _g(self, t):
-        return torch.Tensor([self.var])
+        return torch.Tensor([self.var]).to(t.device)
 
 class VPSDE(BaseSDE):
     def __init__(self, opt, p, q):
