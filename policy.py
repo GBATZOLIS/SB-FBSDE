@@ -86,6 +86,6 @@ class SchrodingerBridgePolicy(torch.nn.Module):
 class MultiStageSchrodingerBridgePolicy(SchrodingerBridgePolicy):
     # note: scale_by_g matters only for pre-trained model
     def __init__(self, opt, direction, dyn, net, use_t_idx=False, scale_by_g=True):
-        super(MultiStageSchrodingerBridgePolicy, self).__init__()
+        super(MultiStageSchrodingerBridgePolicy, self).__init__(opt, direction, dyn, net, use_t_idx, scale_by_g)
         self.register_buffer('starting_outer_it', torch.tensor(1, dtype=torch.int32))
         self.register_buffer('starting_inner_it', torch.tensor(1, dtype=torch.int32))
