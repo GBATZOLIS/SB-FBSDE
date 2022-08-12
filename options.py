@@ -13,6 +13,7 @@ from ipdb import set_trace as debug
 def set():
     # --------------- basic ---------------
     parser = argparse.ArgumentParser()
+    parser.add_argument("--experiments-path",   type=str, default='experiments')
     parser.add_argument("--problem-name",   type=str)
     parser.add_argument("--seed",           type=int,   default=0)
     parser.add_argument("--gpu",            type=int,   default=0,        help="GPU device")
@@ -134,8 +135,7 @@ def set():
         print('[warning] reset opt.train_bs_t to {} since use_arange_t is enabled'.format(opt.interval))
         opt.train_bs_t = opt.interval
 
-
-    opt.experiment_problem_path = os.path.join('experiments', opt.problem_name)
+    opt.experiment_problem_path = os.path.join(opt.experiments_path, opt.problem_name)
     os.makedirs(opt.experiment_problem_path, exist_ok=True)
 
     config_path = '%d_%d' % (opt.num_inner_iterations, opt.policy_updates)
