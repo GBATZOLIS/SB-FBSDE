@@ -182,6 +182,29 @@ def save_toy_npy_traj(opt, fn, traj, n_snapshot=None, direction=None):
     np.save(fn_npy, traj)
     plt.clf()
 
+def scatter_and_quiver(pos_x, pos_y, drift_pos_x, drift_pos_y, drift_u, drift_v, **kwargs):
+    fig = plt.figure()
+    if 'title' in kwargs.keys():
+        title = kwargs['title']
+        plt.title(title)
+    if 'xlim' in kwargs.keys():
+        xlim = kwargs['xlim']
+        plt.xlim(xlim)
+    if 'ylim' in kwargs.keys():  
+        ylim = kwargs['ylim']
+        plt.ylim(ylim)
+    
+    plt.quiver(drift_pos_x, drift_pos_y, drift_u, drift_v)
+    plt.scatter(pos_x, pos_y)
+    plt.gca().set_aspect('equal')
+    buf = io.BytesIO()
+    plt.savefig(buf, format='jpeg')
+    buf.seek(0)
+    image = Image.open(buf)
+    image = transforms.ToTensor()(image)
+    plt.close()
+    return image
+
 #tensorboard scatter plot
 def scatter(x, y, **kwargs):
   fig = plt.figure()

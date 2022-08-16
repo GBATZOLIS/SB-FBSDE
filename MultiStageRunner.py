@@ -127,6 +127,16 @@ class MultiStageRunner():
             raise RuntimeError()
 
     @torch.no_grad()
+    def get_drift_fn(self, dyn):
+        def drift_fn(x, t):
+            f = dyn._f(x,t)
+            g = dyn._g(t)
+            z_forward = self.z_f(x,t)
+            z_backward = self.z_b(x,t)
+            return f+1/2*g*(z_forward-z_backward)
+        return drift_fn
+
+    @torch.no_grad()
     def sample_train_data(self, opt, policy_impt, dyn, ts):
         _, ema_impt, _ = self.get_optimizer_ema_sched(policy_impt)
         with ema_impt.average_parameters():
@@ -231,6 +241,18 @@ class MultiStageRunner():
                 self.writer.add_image('fake_samples', fake_scatter_image, global_step)
                 gt_scatter_image = self.tensorboard_scatter_plot(gt_sample, problem_name, inner_it, outer_it)
                 self.writer.add_image('gt_samples', gt_scatter_image, global_step)
+
+    def tensorboard_scatter_and_quiver_plot(self, dyn, sample):
+        drift_fn = self.get_drift_fn(dyn)
+        lims = {'gmm': [-17, 17], 'checkerboard': [-7, 7], 'moon-to-spiral':[-20, 20],
+                }.get(problem_name)
+        
+        xs = torch.linspace(lims[0], lims[1], 20)
+        ys = torch.linspace(lims[0], lims[1], 20)
+        grid_x, grid_y = torch.meshgrid(x, y)
+
+        torch.vstack([grid_x, grid_y])
+
 
     def tensorboard_scatter_plot(self, sample, problem_name, inner_it, outer_it):
         lims = {'gmm': [-17, 17], 'checkerboard': [-7, 7], 'moon-to-spiral':[-20, 20],
