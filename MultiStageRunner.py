@@ -237,21 +237,43 @@ class MultiStageRunner():
                 problem_name = opt.problem_name
                 global_step = (outer_it-1)*opt.num_inner_iterations+inner_it
 
-                fake_scatter_image = self.tensorboard_scatter_plot(sample, problem_name, inner_it, outer_it)
-                self.writer.add_image('fake_samples', fake_scatter_image, global_step)
-                gt_scatter_image = self.tensorboard_scatter_plot(gt_sample, problem_name, inner_it, outer_it)
-                self.writer.add_image('gt_samples', gt_scatter_image, global_step)
+                #fake_scatter_image = self.tensorboard_scatter_plot(sample, problem_name, inner_it, outer_it)
+                #self.writer.add_image('fake_samples', fake_scatter_image, global_step)
+                #gt_scatter_image = self.tensorboard_scatter_plot(gt_sample, problem_name, inner_it, outer_it)
+                #self.writer.add_image('gt_samples', gt_scatter_image, global_step)
+                
+                p, q = inter_pq_s[0]
+                dyn = sde.build(opt, p, q)
+                img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
+                self.writer.add_image('samples and ODE vector field, outer_it:%d - inner_it:%d' % (outer_it, inner_it), img)
 
-    def tensorboard_scatter_and_quiver_plot(self, dyn, sample):
+
+    def tensorboard_scatter_and_quiver_plot(self, opt, p, dyn, sample):
         drift_fn = self.get_drift_fn(dyn)
+        t = torch.tensor(p.time)
+
         lims = {'gmm': [-17, 17], 'checkerboard': [-7, 7], 'moon-to-spiral':[-20, 20],
-                }.get(problem_name)
+                }.get(opt.problem_name)
         
         xs = torch.linspace(lims[0], lims[1], 20)
         ys = torch.linspace(lims[0], lims[1], 20)
-        grid_x, grid_y = torch.meshgrid(x, y)
+        grid_x, grid_y = torch.meshgrid([xs, ys])
 
-        torch.vstack([grid_x, grid_y])
+        def create_mesh_points(x,y):
+            z = []
+            for i in range(x.size(0)):
+                for j in range(y.size(0)):
+                    z.append([x[i], y[j]])
+            return torch.tensor(z)
+        
+        mesh_points = create_mesh_points(xs,ys)
+        drifts = drift_fn(mesh_points.to(opt.device), t.to(opt.device)).detach().cpu()
+
+        quiver_img = util.scatter_and_quiver(sample[:,0], sample[:,1], 
+                                        mesh_points[:,0], mesh_points[:,1], 
+                                        drifts[:,0], drifts[:,1])
+        return quiver_img
+        
 
 
     def tensorboard_scatter_plot(self, sample, problem_name, inner_it, outer_it):
