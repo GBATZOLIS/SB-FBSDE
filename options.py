@@ -40,12 +40,12 @@ def set():
     #---------------- Divide n Conquer settings ----------
     parser.add_argument('--log-SNR-max', type=float, default=10, help='SNR value at time t0.')
     parser.add_argument('--log-SNR-min', type=float, default=-10, help='SNR value at time 1.')
-    parser.add_argument('--max-num-intervals', type=int, default=2**5, help='num intervals')
-    parser.add_argument('--num-outer-iterations', type=int, default=5, help='outer loop iterations.')
+    parser.add_argument('--max-num-intervals', type=int, default=2**1, help='num intervals')
+    parser.add_argument('--num-outer-iterations', type=int, default=1, help='outer loop iterations.')
     parser.add_argument('--num-inner-iterations', type=int, default=100, help='outer loop iterations.')
-    parser.add_argument('--inner_it_save_freq', type=int, default=5)
-    parser.add_argument('--policy-updates', type=int, default=500, help='alternating policy updates')
-    parser.add_argument('--base-discretisation', type=int, default=4, help='base discretisation')
+    parser.add_argument('--inner_it_save_freq', type=int, default=10)
+    parser.add_argument('--policy-updates', type=int, default=400, help='alternating policy updates')
+    parser.add_argument('--base-discretisation', type=int, default=128, help='base discretisation')
     
     # --------------- SB training & sampling (corrector) ---------------
     parser.add_argument("--training-scheme", type=str, default='standard', help='training schem. Options=[standard, divideNconquer]')
