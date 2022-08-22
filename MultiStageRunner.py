@@ -86,6 +86,9 @@ class MultiStageRunner():
 
         if opt.load:
             util.restore_checkpoint(opt, self, opt.load)
+            self.resume = True
+        else:
+            self.resume = False
         
         self.starting_outer_it = self.z_f.starting_outer_it.item()
         self.starting_inner_it = self.z_f.starting_inner_it.item()
@@ -205,47 +208,60 @@ class MultiStageRunner():
                                             inter_pq_s, discretisation, 
                                             tr_steps, outer_it):
 
-        for inner_it in tqdm(range(self.starting_inner_it, opt.num_inner_iterations+1)):
-            interval_key = random.choice(list(inter_pq_s.keys()))
-            p, q = inter_pq_s[interval_key]
+        if self.resume:
+            start_inner_it = self.starting_inner_it
+            self.resume = False
+        else:
+            start_inner_it = 1
 
-            interval_dyn = sde.build(opt, p, q)
-            ts = torch.linspace(p.time, q.time, discretisation)
-            new_dt = ts[1]-ts[0]
-            interval_dyn.dt = new_dt
-            ts = ts.to(opt.device)
+        for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
+            intervals = list(inter_pq_s.keys()).copy()
+            random.shuffle(intervals)
+            forward_loss, backward_loss = {}, {}
+            for interval_key in intervals:
+                p, q = inter_pq_s[interval_key]
 
-            losses = self.alternating_policy_update(opt, 'forward', interval_dyn, ts, tr_steps=tr_steps)
-            self.log_multistage_sb_alternate_train(opt, outer_it, inner_it, 'forward', losses)
+                interval_dyn = sde.build(opt, p, q)
+                ts = torch.linspace(p.time, q.time, discretisation)
+                new_dt = ts[1]-ts[0]
+                interval_dyn.dt = new_dt
+                ts = ts.to(opt.device)
+
+                losses = self.alternating_policy_update(opt, 'forward', interval_dyn, ts, tr_steps=tr_steps)
+                loss = torch.mean(torch.tensor(losses)).item()
+                forward_loss[str(interval_key+1)] = loss
+
+                losses = self.alternating_policy_update(opt, 'backward', interval_dyn, ts, tr_steps=tr_steps)
+                loss = torch.mean(torch.tensor(losses)).item()
+                backward_loss[str(interval_key+1)] = loss
+
+                if inner_it % opt.inner_it_save_freq == 0 and inner_it !=0:
+                    keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
+                    util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
+
+                if inner_it % 1 == 0:
+                    with torch.no_grad():
+                        sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
+                        sample = sample.to('cpu')
+                        gt_sample = inter_pq_s[0][0].sample()
+                
+                    problem_name = opt.problem_name
+                    global_step = (outer_it-1)*opt.num_inner_iterations+inner_it
+
+                    #fake_scatter_image = self.tensorboard_scatter_plot(sample, problem_name, inner_it, outer_it)
+                    #self.writer.add_image('fake_samples', fake_scatter_image, global_step)
+                    #gt_scatter_image = self.tensorboard_scatter_plot(gt_sample, problem_name, inner_it, outer_it)
+                    #self.writer.add_image('gt_samples', gt_scatter_image, global_step)
+                    
+                    p, q = inter_pq_s[0]
+                    dyn = sde.build(opt, p, q)
+                    img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
+                    self.writer.add_image('samples and ODE vector field, outer_it:%d - inner_it:%d' % (outer_it, inner_it), img)
             
-            losses = self.alternating_policy_update(opt, 'backward', interval_dyn, ts, tr_steps=tr_steps)
-            self.log_multistage_sb_alternate_train(opt, outer_it, inner_it, 'backward', losses)
-
-            self.z_f.starting_inner_it+=1
-            self.z_b.starting_inner_it+=1
-
-            if inner_it % opt.inner_it_save_freq == 0 and inner_it !=0:
-                keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
-                util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
-
-            if inner_it % 1 == 0:
-                with torch.no_grad():
-                    sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
-                    sample = sample.to('cpu')
-                    gt_sample = inter_pq_s[0][0].sample()
-                
-                problem_name = opt.problem_name
-                global_step = (outer_it-1)*opt.num_inner_iterations+inner_it
-
-                #fake_scatter_image = self.tensorboard_scatter_plot(sample, problem_name, inner_it, outer_it)
-                #self.writer.add_image('fake_samples', fake_scatter_image, global_step)
-                #gt_scatter_image = self.tensorboard_scatter_plot(gt_sample, problem_name, inner_it, outer_it)
-                #self.writer.add_image('gt_samples', gt_scatter_image, global_step)
-                
-                p, q = inter_pq_s[0]
-                dyn = sde.build(opt, p, q)
-                img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
-                self.writer.add_image('samples and ODE vector field, outer_it:%d - inner_it:%d' % (outer_it, inner_it), img)
+            global_step = (outer_it-1)*opt.num_inner_iterations+inner_it
+            self.writer.add_scalars('forward_loss', forward_loss, global_step=global_step)
+            self.z_f.starting_inner_it = torch.tensor(inner_it)
+            self.z_b.starting_inner_it = torch.tensor(inner_it)
 
 
     def tensorboard_scatter_and_quiver_plot(self, opt, p, dyn, sample):

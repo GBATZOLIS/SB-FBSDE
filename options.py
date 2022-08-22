@@ -40,12 +40,12 @@ def set():
     #---------------- Divide n Conquer settings ----------
     parser.add_argument('--log-SNR-max', type=float, default=10, help='SNR value at time t0.')
     parser.add_argument('--log-SNR-min', type=float, default=-10, help='SNR value at time 1.')
-    parser.add_argument('--max-num-intervals', type=int, default=2**1, help='num intervals')
-    parser.add_argument('--num-outer-iterations', type=int, default=1, help='outer loop iterations.')
-    parser.add_argument('--num-inner-iterations', type=int, default=100, help='outer loop iterations.')
+    parser.add_argument('--max-num-intervals', type=int, default=2**3, help='num intervals')
+    parser.add_argument('--num-outer-iterations', type=int, default=4, help='outer loop iterations.')
+    parser.add_argument('--num-inner-iterations', type=int, default=150, help='outer loop iterations.')
     parser.add_argument('--inner_it_save_freq', type=int, default=10)
-    parser.add_argument('--policy-updates', type=int, default=400, help='alternating policy updates')
-    parser.add_argument('--base-discretisation', type=int, default=128, help='base discretisation')
+    parser.add_argument('--policy-updates', type=int, default=25, help='alternating policy updates')
+    parser.add_argument('--base-discretisation', type=int, default=8, help='base discretisation')
     
     # --------------- SB training & sampling (corrector) ---------------
     parser.add_argument("--training-scheme", type=str, default='standard', help='training schem. Options=[standard, divideNconquer]')
@@ -138,7 +138,7 @@ def set():
     opt.experiment_problem_path = os.path.join(opt.experiments_path, opt.problem_name)
     os.makedirs(opt.experiment_problem_path, exist_ok=True)
 
-    config_path = '%d_%d' % (opt.num_inner_iterations, opt.policy_updates)
+    config_path = '%d_%d_%d' % (opt.num_inner_iterations, opt.policy_updates, opt.discretisation)
     opt.experiment_path = os.path.join(opt.experiment_problem_path, config_path)
 
     opt.ckpt_path = os.path.join(opt.experiment_path, 'checkpoints')
