@@ -260,6 +260,7 @@ class MultiStageRunner():
             
             global_step = (outer_it-1)*opt.num_inner_iterations+inner_it
             self.writer.add_scalars('forward_loss', forward_loss, global_step=global_step)
+            self.writer.add_scalars('backward_loss', backward_loss, global_step=global_step)
             self.z_f.starting_inner_it = torch.tensor(inner_it)
             self.z_b.starting_inner_it = torch.tensor(inner_it)
 

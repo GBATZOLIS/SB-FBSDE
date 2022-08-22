@@ -138,7 +138,7 @@ def set():
     opt.experiment_problem_path = os.path.join(opt.experiments_path, opt.problem_name)
     os.makedirs(opt.experiment_problem_path, exist_ok=True)
 
-    config_path = '%d_%d_%d' % (opt.num_inner_iterations, opt.policy_updates, opt.discretisation)
+    config_path = '%d_%d_%d' % (opt.num_inner_iterations, opt.policy_updates, opt.base_discretisation)
     opt.experiment_path = os.path.join(opt.experiment_problem_path, config_path)
 
     opt.ckpt_path = os.path.join(opt.experiment_path, 'checkpoints')
