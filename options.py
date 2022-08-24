@@ -36,6 +36,7 @@ def set():
     parser.add_argument("--sigma-min",      type=float, default=0.01,     help="min diffusion for VESDE")
     parser.add_argument("--beta-max",       type=float, default=20,       help="max diffusion for VPSDE")
     parser.add_argument("--beta-min",       type=float, default=0.1,      help="min diffusion for VPSDE")
+    parser.add_argument("--var",            type=float, default=1.,       help='diffusion coefficient in simple SDEs')
 
     #---------------- Divide n Conquer settings ----------
     parser.add_argument('--log-SNR-max', type=float, default=10, help='SNR value at time t0.')
@@ -138,7 +139,7 @@ def set():
     opt.experiment_problem_path = os.path.join(opt.experiments_path, opt.problem_name)
     os.makedirs(opt.experiment_problem_path, exist_ok=True)
 
-    config_path = '%d_%d_%d' % (opt.num_inner_iterations, opt.policy_updates, opt.base_discretisation)
+    config_path = '%d_%d_%d_%.1f' % (opt.num_inner_iterations, opt.policy_updates, opt.base_discretisation, opt.var)
     opt.experiment_path = os.path.join(opt.experiment_problem_path, config_path)
 
     opt.ckpt_path = os.path.join(opt.experiment_path, 'checkpoints')

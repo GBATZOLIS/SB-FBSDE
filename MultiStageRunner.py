@@ -62,6 +62,30 @@ def activate_policy(policy):
     policy.train()
     return policy
 
+class EarlyStoppingCallback():
+    def __init__(self, patience=5):
+        self.patience = patience
+        self.loss_values = []
+        self.stopping_signal=0
+    
+    def add_value(self, value):
+        self.loss_values.append(value)
+
+    def __call__(self):
+        if len(self.loss_values)<=2*self.patience:
+            return False
+        else:
+            previous_values = self.loss_values[:-self.patience]
+            min_from_prev_vals = min(previous_values)
+            patience_values = self.loss_values[-self.patience:]
+            min_from_patience_vals = min(patience_values)
+
+            if min_from_patience_vals > min_from_prev_vals:
+                return True
+            else:
+                return False
+        
+        
 class MultiStageRunner():
     def __init__(self, opt):
         super(MultiStageRunner,self).__init__()
@@ -214,7 +238,12 @@ class MultiStageRunner():
         else:
             start_inner_it = 1
 
+        early_stopper = EarlyStoppingCallback(patience=5)
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
+            stop = early_stopper()
+            if stop:
+                break
+
             intervals = list(inter_pq_s.keys()).copy()
             random.shuffle(intervals)
             forward_loss, backward_loss = {}, {}
@@ -261,6 +290,16 @@ class MultiStageRunner():
             global_step = (outer_it-1)*opt.num_inner_iterations+inner_it
             self.writer.add_scalars('forward_loss', forward_loss, global_step=global_step)
             self.writer.add_scalars('backward_loss', backward_loss, global_step=global_step)
+
+            average_forward_loss = sum([forward_loss[key] for key in forward_loss.keys()])/len(forward_loss.keys())
+            average_backward_loss = sum([backward_loss[key] for key in backward_loss.keys()])/len(backward_loss.keys())
+            monitor_loss = (average_forward_loss + average_backward_loss)/2
+            early_stopper.add_value(monitor_loss)
+            
+            self.writer.add_scalar('avg_forward_loss', average_forward_loss, global_step=global_step)
+            self.writer.add_scalar('avg_backward_loss', average_backward_loss, global_step=global_step)
+            self.writer.add_scalar('monitor_loss', monitor_loss, global_step=global_step)
+
             self.z_f.starting_inner_it = torch.tensor(inner_it)
             self.z_b.starting_inner_it = torch.tensor(inner_it)
 

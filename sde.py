@@ -242,9 +242,9 @@ def divergence_approx(f, y, e=None):
     return approx_tr_dzdx
 
 class SimpleSDE(BaseSDE):
-    def __init__(self, opt, p, q, var=1.0):
+    def __init__(self, opt, p, q):
         super(SimpleSDE, self).__init__(opt, p, q)
-        self.var = var
+        self.var = opt.var
 
     def _f(self, x, t):
         return torch.zeros_like(x)
