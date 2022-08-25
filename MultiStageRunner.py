@@ -329,8 +329,6 @@ class MultiStageRunner():
                                         mesh_points[:,0], mesh_points[:,1], 
                                         drifts[:,0], drifts[:,1])
         return quiver_img
-        
-
 
     def tensorboard_scatter_plot(self, sample, problem_name, inner_it, outer_it):
         lims = {'gmm': [-17, 17], 'checkerboard': [-7, 7], 'moon-to-spiral':[-20, 20],
@@ -406,6 +404,52 @@ class MultiStageRunner():
                                                             initial_sample=initial_sample)
         sample = initial_sample
         return initial_sample
+
+    def sample(self, opt, discretisation, save_traj=True, stochastic=True):
+        #1.) detect number of SBP stages
+        outer_it = self.z_f.starting_outer_it.item()
+        max_num_intervals = opt.max_num_intervals
+        num_intervals = max_num_intervals / 2**(outer_it-1)
+        inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
+
+        sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
+        
+        xs = torch.empty((x.shape[0], discretisation*num_intervals+1, *x.shape[1:])) if save_traj else None
+
+        for i, key in tqdm(enumerate(sorted_keys)):
+            p, q = inter_pq_s[key]
+            interval_dyn = sde.build(opt, p, q)
+            ts = torch.linspace(p.time, q.time, discretisation)
+            new_dt = ts[1]-ts[0]
+            interval_dyn.dt = new_dt
+            ts = ts.to(opt.device)
+            ts = torch.flip(ts,dims=[0])
+
+            if i==0:
+                x = q.sample().to(self.device) #initialise from p_prior
+
+            if save_traj:
+                xs[:,0,::] = x
+
+            for idx, t in enumerate(ts):
+                if stochastic:
+                    f = interval_dyn.f(x, t, direction='forward')
+                    backward_policy = self.z_b
+                    z = backward_policy(x,t)
+                    dw = self.dw(x)
+                    g = self.g(t)
+                    dt = interval_dyn.dt
+                    x = x + (f - g*z)*(-dt) + g*dw
+                else: #ODE case
+                    drift_fn = self.get_drift_fn(interval_dyn)
+                    drift = drift_fn(x,t)
+                    x = x + drift * (-dt)
+                
+                if save_traj:
+                    xs[:,i*discretisation+idx+1,::] = x
+            
+            return {'trajectory': xs, 'sample':x}
+            
 
     def sb_alterating_train(self, opt):
         assert not util.is_image_dataset(opt)

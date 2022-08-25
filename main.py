@@ -40,6 +40,8 @@ def main(opt):
         #run.sanity_check(opt) -> passed (bug solved)
         run.sb_alterating_train(opt)
 
+        #run.test() -> test the effect of decreasing sigma on the ODE and SDE trajectories (plot paths, calculate average ODE curvature)
+
 if not opt.cpu:
     with torch.cuda.device(opt.gpu):
         main(opt)
