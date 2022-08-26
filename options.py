@@ -13,6 +13,7 @@ from ipdb import set_trace as debug
 def set():
     # --------------- basic ---------------
     parser = argparse.ArgumentParser()
+    parser.add_argument('--phase',              type=str, default='train', help='Train, test phase')
     parser.add_argument("--experiments-path",   type=str, default='experiments')
     parser.add_argument("--problem-name",   type=str)
     parser.add_argument("--seed",           type=int,   default=0)

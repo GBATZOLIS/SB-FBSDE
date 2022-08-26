@@ -405,18 +405,57 @@ class MultiStageRunner():
         sample = initial_sample
         return initial_sample
 
+
+    def experimental_features(self, opt):
+        self.visualize_trajectories(opt, stochastic=True)
+
+    def visualize_trajectories(self, opt, stochastic=True):
+        save_path = os.path.join(opt.experiment_path, 'testing')
+        os.makedirs(save_path, exist_ok=True)
+
+        out = self.sample(opt, discretisation=16, stochastic=stochastic)
+        traj = out['trajectory']
+
+        x = out['sample']
+
+        plt.figure()
+        for i in range(traj.size(0)):
+            color = (np.random.rand(), np.random.rand(), np.random.rand())
+            plt.plot(traj[i,:,0], traj[i,:,1], color=color)
+        plt.scatter(x[:,0], x[:,1])
+        plt.savefig(os.path.join(save_path, 'traj.png'))
+
+
+    def estimate_average_curvature(self, opt):
+        pass
+    
+    def estimate_discretisation(self, opt):
+        #investigate the effect of discretisation on the bias of the loss estimate.
+        #say we are at the converged stage of the outer iteration i where we have N_i intervals and d_i training discretisation.
+        #We now want to move to the next outer iteration i where we have N_i/2 intervals and d_{i+1} discretisation.
+        #A natural choice for the discretisation is 2*d_i. 
+        #Even this value can lead to faster overall training 
+        #because we observed that the subsequent outer iterations converge very fast 
+        #compared to the first outer iteration with this discretisation.
+
+        #We could investigate though whether coarser discretisation can be used in the next stages 
+        #(given that the intermediate bridges are getting close to optimal transport maps 
+        #if a small diffusion coefficient is used for the simple SDE)
+
+        #initially we could investigate the effect of discretisation on the loss estimate.
+        pass
+
     def sample(self, opt, discretisation, save_traj=True, stochastic=True):
         #1.) detect number of SBP stages
         outer_it = self.z_f.starting_outer_it.item()
         max_num_intervals = opt.max_num_intervals
-        num_intervals = max_num_intervals / 2**(outer_it-1)
+        num_intervals = max_num_intervals // 2**(outer_it-1)
         inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
 
         sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
         
-        xs = torch.empty((x.shape[0], discretisation*num_intervals+1, *x.shape[1:])) if save_traj else None
-
         for i, key in tqdm(enumerate(sorted_keys)):
+            
             p, q = inter_pq_s[key]
             interval_dyn = sde.build(opt, p, q)
             ts = torch.linspace(p.time, q.time, discretisation)
@@ -426,29 +465,31 @@ class MultiStageRunner():
             ts = torch.flip(ts,dims=[0])
 
             if i==0:
-                x = q.sample().to(self.device) #initialise from p_prior
+                x = q.sample() #initialise from p_prior
+                xs = torch.empty((x.size(0), discretisation*num_intervals+1, *x.shape[1:])) if save_traj else None
 
             if save_traj:
-                xs[:,0,::] = x
+                xs[:,0,::] = x.detach().cpu()
 
             for idx, t in enumerate(ts):
                 if stochastic:
                     f = interval_dyn.f(x, t, direction='forward')
                     backward_policy = self.z_b
                     z = backward_policy(x,t)
-                    dw = self.dw(x)
-                    g = self.g(t)
+                    dw = interval_dyn.dw(x)
+                    g = interval_dyn.g(t)
                     dt = interval_dyn.dt
                     x = x + (f - g*z)*(-dt) + g*dw
                 else: #ODE case
                     drift_fn = self.get_drift_fn(interval_dyn)
                     drift = drift_fn(x,t)
-                    x = x + drift * (-dt)
+                    x = x + drift * (-interval_dyn.dt)
+                
                 
                 if save_traj:
-                    xs[:,i*discretisation+idx+1,::] = x
+                    xs[:,i*discretisation+idx+1,::] = x.detach().cpu()
             
-            return {'trajectory': xs, 'sample':x}
+        return {'trajectory': xs, 'sample':x.detach().cpu()}
             
 
     def sb_alterating_train(self, opt):
