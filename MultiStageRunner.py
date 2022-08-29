@@ -110,12 +110,10 @@ class MultiStageRunner():
 
         if opt.load:
             util.restore_checkpoint(opt, self, opt.load)
-            self.resume = True
-        else:
-            self.resume = False
         
         self.starting_outer_it = self.z_f.starting_outer_it.item()
         self.starting_inner_it = self.z_f.starting_inner_it.item()
+        self.global_step = self.z_f.global_step.item()
 
         if opt.log_tb: # tensorboard related things
             self.it_f = 0
@@ -232,12 +230,7 @@ class MultiStageRunner():
                                             inter_pq_s, discretisation, 
                                             tr_steps, outer_it):
 
-        if self.resume:
-            start_inner_it = self.starting_inner_it
-            self.resume = False
-        else:
-            start_inner_it = 1
-
+        start_inner_it = self.starting_inner_it
         early_stopper = EarlyStoppingCallback(patience=5)
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
             stop = early_stopper()
@@ -268,14 +261,14 @@ class MultiStageRunner():
                     keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
                     util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
 
-                if inner_it % 1 == 0:
+                if inner_it % 5 == 0:
                     with torch.no_grad():
                         sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
                         sample = sample.to('cpu')
                         gt_sample = inter_pq_s[0][0].sample()
                 
                     problem_name = opt.problem_name
-                    global_step = (outer_it-1)*opt.num_inner_iterations+inner_it
+                    #global_step = (outer_it-1)*opt.num_inner_iterations+inner_it
 
                     #fake_scatter_image = self.tensorboard_scatter_plot(sample, problem_name, inner_it, outer_it)
                     #self.writer.add_image('fake_samples', fake_scatter_image, global_step)
@@ -287,22 +280,48 @@ class MultiStageRunner():
                     img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
                     self.writer.add_image('samples and ODE vector field, outer_it:%d - inner_it:%d' % (outer_it, inner_it), img)
             
-            global_step = (outer_it-1)*opt.num_inner_iterations+inner_it
-            self.writer.add_scalars('forward_loss', forward_loss, global_step=global_step)
-            self.writer.add_scalars('backward_loss', backward_loss, global_step=global_step)
+            self.global_step += 1
+
+            self.writer.add_scalars('forward_loss', forward_loss, global_step=self.global_step)
+            self.writer.add_scalars('backward_loss', backward_loss, global_step=self.global_step)
 
             average_forward_loss = sum([forward_loss[key] for key in forward_loss.keys()])/len(forward_loss.keys())
             average_backward_loss = sum([backward_loss[key] for key in backward_loss.keys()])/len(backward_loss.keys())
             monitor_loss = (average_forward_loss + average_backward_loss)/2
             early_stopper.add_value(monitor_loss)
             
-            self.writer.add_scalar('avg_forward_loss', average_forward_loss, global_step=global_step)
-            self.writer.add_scalar('avg_backward_loss', average_backward_loss, global_step=global_step)
-            self.writer.add_scalar('monitor_loss', monitor_loss, global_step=global_step)
+            self.writer.add_scalar('avg_forward_loss', average_forward_loss, global_step=self.global_step)
+            self.writer.add_scalar('avg_backward_loss', average_backward_loss, global_step=self.global_step)
+            self.writer.add_scalar('monitor_loss', monitor_loss, global_step=self.global_step)
 
             self.z_f.starting_inner_it = torch.tensor(inner_it)
-            self.z_b.starting_inner_it = torch.tensor(inner_it)
+            self.starting_inner_it = inner_it
+            self.z_f.global_step = torch.tensor(self.global_step)
+        
+        self.starting_inner_it = 1 #reset after the end of the outer iteration.
+        self.z_f.starting_inner_it = torch.tensor(self.starting_inner_it)
 
+    def sb_alterating_train(self, opt):
+        assert not util.is_image_dataset(opt)
+        policy_f, policy_b = self.z_f, self.z_b
+        policy_f = activate_policy(policy_f)
+        policy_b = activate_policy(policy_b)
+        optimizer_f, _, sched_f = self.get_optimizer_ema_sched(policy_f)
+        optimizer_b, _, sched_b = self.get_optimizer_ema_sched(policy_b)
+        
+        outer_iterations = self.num_outer_iterations
+        num_intervals = self.max_num_intervals
+        tr_steps=opt.policy_updates
+        for outer_it in range(self.starting_outer_it, outer_iterations+1):
+            inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
+            self.sb_outer_alternating_iteration(opt,
+                                            optimizer_f, optimizer_b, 
+                                            sched_f, sched_b, 
+                                            inter_pq_s, self.base_discretisation * 2 ** (outer_it-1), 
+                                            tr_steps, outer_it)
+            num_intervals = num_intervals // 2
+
+            self.z_f.starting_outer_it += 1
 
     def tensorboard_scatter_and_quiver_plot(self, opt, p, dyn, sample):
         drift_fn = self.get_drift_fn(dyn)
@@ -490,30 +509,6 @@ class MultiStageRunner():
                     xs[:,i*discretisation+idx+1,::] = x.detach().cpu()
             
         return {'trajectory': xs, 'sample':x.detach().cpu()}
-            
-
-    def sb_alterating_train(self, opt):
-        assert not util.is_image_dataset(opt)
-        policy_f, policy_b = self.z_f, self.z_b
-        policy_f = activate_policy(policy_f)
-        policy_b = activate_policy(policy_b)
-        optimizer_f, _, sched_f = self.get_optimizer_ema_sched(policy_f)
-        optimizer_b, _, sched_b = self.get_optimizer_ema_sched(policy_b)
-        
-        outer_iterations = self.num_outer_iterations
-        num_intervals = self.max_num_intervals
-        tr_steps=opt.policy_updates
-        for outer_it in range(self.starting_outer_it, outer_iterations+1):
-            inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
-            self.sb_outer_alternating_iteration(opt,
-                                            optimizer_f, optimizer_b, 
-                                            sched_f, sched_b, 
-                                            inter_pq_s, self.base_discretisation * 2 ** (outer_it-1), 
-                                            tr_steps, outer_it)
-            num_intervals = num_intervals // 2
-
-            self.z_f.starting_outer_it += 1
-            self.z_b.starting_outer_it += 1
 
     def sanity_check(self, opt, sanity_check_type = 'marginals'):
         if sanity_check_type == 'marginals':
