@@ -1,0 +1,107 @@
+[1m[33m=======================================================[0m
+[1m[33m     Likelihood-Training of Schrodinger Bridge[0m
+[1m[33m=======================================================[0m
+[1m[35msetting configurations...[0m
+[1m[32m[warning] you are in the training phase, are you sure you do not want to have snapshot?[0m
+[1m[32m[warning] double check that you do not want to reuse FID evaluation trajectory for training!!![0m
+[1m[32mphase[0m : [1m[33mtrain[0m
+[1m[32mexperiments_path[0m : [1m[33m/data/Georgios/experiments[0m
+[1m[32mproblem_name[0m : [1m[33mcheckerboard[0m
+[1m[32mseed[0m : [1m[33m42[0m
+[1m[32mgpu[0m : [1m[33m0[0m
+[1m[32mload[0m : [1m[33mNone[0m
+[1m[32mdir[0m : [1m[33mresults[0m
+[1m[32mgroup[0m : [1m[33m0[0m
+[1m[32mname[0m : [1m[33mdebug[0m
+[1m[32mlog_fn[0m : [1m[33mNone[0m
+[1m[32mlog_tb[0m : [1m[33mTrue[0m
+[1m[32mcpu[0m : [1m[33mFalse[0m
+[1m[32mt0[0m : [1m[33m0[0m
+[1m[32mT[0m : [1m[33m1.0[0m
+[1m[32minterval[0m : [1m[33m100[0m
+[1m[32mforward_net[0m : [1m[33mtoy[0m
+[1m[32mbackward_net[0m : [1m[33mtoy[0m
+[1m[32msde_type[0m : [1m[33msimple[0m
+[1m[32msigma_max[0m : [1m[33m20[0m
+[1m[32msigma_min[0m : [1m[33m0.01[0m
+[1m[32mbeta_max[0m : [1m[33m20[0m
+[1m[32mbeta_min[0m : [1m[33m0.1[0m
+[1m[32mvar[0m : [1m[33m0.1[0m
+[1m[32mlog_SNR_max[0m : [1m[33m10[0m
+[1m[32mlog_SNR_min[0m : [1m[33m-10[0m
+[1m[32mmax_num_intervals[0m : [1m[33m8[0m
+[1m[32mnum_outer_iterations[0m : [1m[33m4[0m
+[1m[32mnum_inner_iterations[0m : [1m[33m2500[0m
+[1m[32minner_it_save_freq[0m : [1m[33m10[0m
+[1m[32mpolicy_updates[0m : [1m[33m25[0m
+[1m[32mbase_discretisation[0m : [1m[33m16[0m
+[1m[32mtraining_scheme[0m : [1m[33mdivideNconquer[0m
+[1m[32mtrain_method[0m : [1m[33malternate[0m
+[1m[32muse_arange_t[0m : [1m[33mFalse[0m
+[1m[32mreuse_traj[0m : [1m[33mFalse[0m
+[1m[32muse_corrector[0m : [1m[33mFalse[0m
+[1m[32mtrain_bs_x[0m : [1m[33mNone[0m
+[1m[32mtrain_bs_t[0m : [1m[33mNone[0m
+[1m[32mnum_stage[0m : [1m[33mNone[0m
+[1m[32mnum_epoch[0m : [1m[33mNone[0m
+[1m[32mnum_corrector[0m : [1m[33m1[0m
+[1m[32msnr[0m : [1m[33mNone[0m
+[1m[32meval_itr[0m : [1m[33m200[0m
+[1m[32msamp_bs[0m : [1m[33m1000[0m
+[1m[32mnum_itr[0m : [1m[33m2000[0m
+[1m[32mDSM_warmup[0m : [1m[33mFalse[0m
+[1m[32mtrain_bs_x_dsm[0m : [1m[33mNone[0m
+[1m[32mtrain_bs_t_dsm[0m : [1m[33mNone[0m
+[1m[32mnum_itr_dsm[0m : [1m[33mNone[0m
+[1m[32mlr[0m : [1m[33m0.0005[0m
+[1m[32mlr_f[0m : [1m[33m0.0005[0m
+[1m[32mlr_b[0m : [1m[33m0.0005[0m
+[1m[32mlr_gamma[0m : [1m[33m0.9[0m
+[1m[32mlr_step[0m : [1m[33m1000[0m
+[1m[32ml2_norm[0m : [1m[33m0.0[0m
+[1m[32moptimizer[0m : [1m[33mAdamW[0m
+[1m[32mgrad_clip[0m : [1m[33mNone[0m
+[1m[32mnoise_type[0m : [1m[33mgaussian[0m
+[1m[32mFID_freq[0m : [1m[33m0[0m
+[1m[32msnapshot_freq[0m : [1m[33m0[0m
+[1m[32mckpt_freq[0m : [1m[33m0[0m
+[1m[32mFID_ckpt[0m : [1m[33mNone[0m
+[1m[32mnum_FID_sample[0m : [1m[33m10000[0m
+[1m[32mcompute_FID[0m : [1m[33mFalse[0m
+[1m[32mcompute_NLL[0m : [1m[33mFalse[0m
+[1m[32mtraining[0m : [1m[33m{}
+[0m
+[1m[32mweight_decay[0m : [1m[33m0[0m
+[1m[32mdevice[0m : [1m[33mcuda:0[0m
+[1m[32mmodel_configs[0m : [1m[33mNone[0m
+[1m[32mexperiment_problem_path[0m : [1m[33m/data/Georgios/experiments/checkerboard/8[0m
+[1m[32mexperiment_path[0m : [1m[33m/data/Georgios/experiments/checkerboard/8/2500_25_16_0.10[0m
+[1m[32mckpt_path[0m : [1m[33m/data/Georgios/experiments/checkerboard/8/2500_25_16_0.10/checkpoints[0m
+[1m[32meval_path[0m : [1m[33m/data/Georgios/experiments/checkerboard/8/2500_25_16_0.10/eval[0m
+[1m[32mgenerated_data_path[0m : [1m[33m/data/Georgios/experiments/checkerboard/8/2500_25_16_0.10/eval/backward/generated_data[0m
+
+[1m[35mbuild boundary distribution...[0m
+[1m[35mbuild forward policy...[0m
+[1m[31mnumber of parameters is 758018[0m
+[38;5;26mTraceback (most recent call last):[39m
+  File [38;5;28m"/home/ma-user/SB-FBSDE/main.py"[39m, line [38;5;241m50[39m, in <module>
+    main(opt)
+  File [38;5;28m"/home/ma-user/SB-FBSDE/main.py"[39m, line [38;5;241m39[39m, in main
+    run [38;5;241m=[39m MultiStageRunner(opt)
+  File [38;5;28m"/home/ma-user/SB-FBSDE/MultiStageRunner.py"[39m, line [38;5;241m106[39m, in __init__
+    [38;5;28mself[39m[38;5;241m.[39mz_f [38;5;241m=[39m policy[38;5;241m.[39mbuild(opt, [38;5;28mself[39m[38;5;241m.[39mdyn, [38;5;124m'[39m[38;5;124mforward[39m[38;5;124m'[39m)  [38;5;66;03m# p -> q[39;00m
+  File [38;5;28m"/home/ma-user/SB-FBSDE/policy.py"[39m, line [38;5;241m25[39m, in build
+    policy[38;5;241m.[39mto(opt[38;5;241m.[39mdevice)
+  File [38;5;28m"/home/ma-user/anaconda3/envs/sb-fbsde/lib/python3.9/site-packages/torch/nn/modules/module.py"[39m, line [38;5;241m673[39m, in to
+    [38;5;28;01mreturn[39;00m [38;5;28mself[39m[38;5;241m.[39m_apply(convert)
+  File [38;5;28m"/home/ma-user/anaconda3/envs/sb-fbsde/lib/python3.9/site-packages/torch/nn/modules/module.py"[39m, line [38;5;241m387[39m, in _apply
+    module[38;5;241m.[39m_apply(fn)
+  File [38;5;28m"/home/ma-user/anaconda3/envs/sb-fbsde/lib/python3.9/site-packages/torch/nn/modules/module.py"[39m, line [38;5;241m387[39m, in _apply
+    module[38;5;241m.[39m_apply(fn)
+  File [38;5;28m"/home/ma-user/anaconda3/envs/sb-fbsde/lib/python3.9/site-packages/torch/nn/modules/module.py"[39m, line [38;5;241m387[39m, in _apply
+    module[38;5;241m.[39m_apply(fn)
+  File [38;5;28m"/home/ma-user/anaconda3/envs/sb-fbsde/lib/python3.9/site-packages/torch/nn/modules/module.py"[39m, line [38;5;241m409[39m, in _apply
+    param_applied [38;5;241m=[39m fn(param)
+  File [38;5;28m"/home/ma-user/anaconda3/envs/sb-fbsde/lib/python3.9/site-packages/torch/nn/modules/module.py"[39m, line [38;5;241m671[39m, in convert
+    [38;5;28;01mreturn[39;00m t[38;5;241m.[39mto(device, dtype [38;5;28;01mif[39;00m t[38;5;241m.[39mis_floating_point() [38;5;129;01mor[39;00m t[38;5;241m.[39mis_complex() [38;5;28;01melse[39;00m [38;5;28;01mNone[39;00m, non_blocking)
+[38;5;160mKeyboardInterrupt[39m

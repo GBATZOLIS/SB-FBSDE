@@ -63,9 +63,14 @@ def activate_policy(policy):
     return policy
 
 class EarlyStoppingCallback():
-    def __init__(self, patience=5):
+    def __init__(self, patience=5, loss_values=None):
         self.patience = patience
-        self.loss_values = []
+
+        if loss_values is None:
+            self.loss_values = []
+        else:
+            self.loss_values = loss_values
+
         self.stopping_signal=0
     
     def add_value(self, value):
@@ -114,6 +119,7 @@ class MultiStageRunner():
         self.starting_outer_it = self.z_f.starting_outer_it.item()
         self.starting_inner_it = self.z_f.starting_inner_it.item()
         self.global_step = self.z_f.global_step.item()
+        self.monitor_loss = self.z_f.monitor_loss.tolist()
 
         if opt.log_tb: # tensorboard related things
             self.it_f = 0
@@ -231,7 +237,7 @@ class MultiStageRunner():
                                             tr_steps, outer_it):
 
         start_inner_it = self.starting_inner_it
-        early_stopper = EarlyStoppingCallback(patience=5)
+        early_stopper = EarlyStoppingCallback(patience=10, loss_values=self.monitor_loss)
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
             stop = early_stopper()
             if stop:
@@ -291,9 +297,14 @@ class MultiStageRunner():
             self.z_f.starting_inner_it = torch.tensor(inner_it)
             self.starting_inner_it = inner_it
             self.z_f.global_step = torch.tensor(self.global_step)
+            self.z_f.register_buffer('monitor_loss', torch.tensor(early_stopper.loss_values))
+            print(self.z_f.monitor_loss)
         
-        self.starting_inner_it = 1 #reset after the end of the outer iteration.
+        #reset after the end of the outer iteration.
+        self.starting_inner_it = 1 
+        self.monitor_loss = []
         self.z_f.starting_inner_it = torch.tensor(self.starting_inner_it)
+        self.z_f.register_buffer('monitor_loss', torch.tensor(self.monitor_loss))
 
     def sb_alterating_train(self, opt):
         assert not util.is_image_dataset(opt)

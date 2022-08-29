@@ -137,7 +137,7 @@ def set():
         print('[warning] reset opt.train_bs_t to {} since use_arange_t is enabled'.format(opt.interval))
         opt.train_bs_t = opt.interval
 
-    opt.experiment_problem_path = os.path.join(opt.experiments_path, opt.problem_name, opt.max_num_intervals)
+    opt.experiment_problem_path = os.path.join(opt.experiments_path, opt.problem_name, str(opt.max_num_intervals))
     os.makedirs(opt.experiment_problem_path, exist_ok=True)
 
     config_path = '%d_%d_%d_%.2f' % (opt.num_inner_iterations, opt.policy_updates, opt.base_discretisation, opt.var)
