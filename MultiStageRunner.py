@@ -268,12 +268,6 @@ class MultiStageRunner():
                         gt_sample = inter_pq_s[0][0].sample()
                 
                     problem_name = opt.problem_name
-                    #global_step = (outer_it-1)*opt.num_inner_iterations+inner_it
-
-                    #fake_scatter_image = self.tensorboard_scatter_plot(sample, problem_name, inner_it, outer_it)
-                    #self.writer.add_image('fake_samples', fake_scatter_image, global_step)
-                    #gt_scatter_image = self.tensorboard_scatter_plot(gt_sample, problem_name, inner_it, outer_it)
-                    #self.writer.add_image('gt_samples', gt_scatter_image, global_step)
                     
                     p, q = inter_pq_s[0]
                     dyn = sde.build(opt, p, q)
@@ -412,11 +406,9 @@ class MultiStageRunner():
             new_dt = ts[1]-ts[0]
             interval_dyn.dt = new_dt
             ts = ts.to(opt.device)
+            
             if i==0:
                 initial_sample=None
-            #print('From (t,logSNR):(%.3f,-infty) to (t,logSNR):(%.3f,%.3f)' % (q.time, p.time, np.log(p.snr)))
-            #else:
-            #print('From (t,logSNR):(%.3f,%.3f) to (t,logSNR):(%.3f,%.3f)' % (q.time, np.log(q.snr), p.time, np.log(p.snr)))
             
             _, _, initial_sample = interval_dyn.sample_traj(ts, self.z_b,
                                                             save_traj=False,
@@ -440,7 +432,8 @@ class MultiStageRunner():
         plt.figure()
         for i in range(traj.size(0)):
             color = (np.random.rand(), np.random.rand(), np.random.rand())
-            plt.plot(traj[i,:,0], traj[i,:,1], color=color)
+            plt.plot(traj[i,1:,0], traj[i,1:,1], color=color, alpha=0.3)
+
         plt.scatter(x[:,0], x[:,1])
         plt.savefig(os.path.join(save_path, 'traj.png'))
 
