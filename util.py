@@ -115,7 +115,12 @@ def restore_checkpoint(opt, runner, load_name):
             checkpoint = torch.load(load_name, map_location=opt.device)
             ckpt_keys=[*checkpoint.keys()]
             for k in ckpt_keys:
-                getattr(runner,k).load_state_dict(checkpoint[k])
+                obj = getattr(runner,k)
+
+                if k == 'z_f':
+                    obj.register_buffer('monitor_loss', checkpoint[k]['monitor_loss'])
+
+                obj.load_state_dict(checkpoint[k])
 
         if len(full_keys)!=len(ckpt_keys):
             value = { k for k in set(full_keys) - set(ckpt_keys) }
