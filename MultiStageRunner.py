@@ -429,16 +429,15 @@ class MultiStageRunner():
 
 
     def experimental_features(self, opt):
-        self.visualize_trajectories(opt, stochastic=True)
+        self.visualize_trajectories(opt, discretisation=4, stochastic=False)
 
-    def visualize_trajectories(self, opt, stochastic=True):
+    def visualize_trajectories(self, opt, discretisation=16, stochastic=True):
         save_path = os.path.join(opt.experiment_path, 'testing')
         os.makedirs(save_path, exist_ok=True)
 
-        out = self.sample(opt, discretisation=16, stochastic=stochastic)
-        traj = out['trajectory']
-
-        x = out['sample']
+        sampled = self.sample(opt, discretisation=discretisation, stochastic=stochastic)
+        traj = sampled['trajectory']
+        x = sampled['sample']
 
         plt.figure()
         for i in range(traj.size(0)):
@@ -446,7 +445,19 @@ class MultiStageRunner():
             plt.plot(traj[i,1:,0], traj[i,1:,1], color=color, alpha=0.3)
 
         plt.scatter(x[:,0], x[:,1])
-        plt.savefig(os.path.join(save_path, 'traj.png'))
+        plt.savefig(os.path.join(save_path, 'sampled-traj-%s.png' % ('sde' if stochastic else 'ode')))
+
+        encoded = self.encode(opt, discretisation=discretisation, stochastic=stochastic)
+        traj = encoded['trajectory']
+        x = encoded['sample']
+
+        plt.figure()
+        for i in range(traj.size(0)):
+            color = (np.random.rand(), np.random.rand(), np.random.rand())
+            plt.plot(traj[i,1:,0], traj[i,1:,1], color=color, alpha=0.3)
+
+        plt.scatter(x[:,0], x[:,1])
+        plt.savefig(os.path.join(save_path, 'encoded-traj-%s.png' % ('sde' if stochastic else 'ode')))
 
 
     def estimate_average_curvature(self, opt):
@@ -468,6 +479,54 @@ class MultiStageRunner():
         #initially we could investigate the effect of discretisation on the loss estimate.
         pass
 
+    @torch.no_grad()
+    def encode(self, opt, discretisation, save_traj=True, stochastic=True):
+        #1.) detect number of SBP stages
+        outer_it = self.z_f.starting_outer_it.item()
+        max_num_intervals = opt.max_num_intervals
+        num_intervals = max_num_intervals // 2**(outer_it-1)
+        inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
+
+        sorted_keys = sorted(list(inter_pq_s.keys()))
+        
+        for i, key in tqdm(enumerate(sorted_keys)):
+            
+            p, q = inter_pq_s[key]
+            interval_dyn = sde.build(opt, p, q)
+            ts = torch.linspace(p.time, q.time, discretisation)
+            new_dt = ts[1]-ts[0]
+            interval_dyn.dt = new_dt
+            ts = ts.to(opt.device)
+            ts = torch.flip(ts,dims=[0])
+
+            if i==0:
+                x = p.sample().to(opt.device) #initialise from p_data
+                xs = torch.empty((x.size(0), discretisation*num_intervals+1, *x.shape[1:])) if save_traj else None
+
+            if save_traj:
+                xs[:,0,::] = x.detach().cpu()
+
+            for idx, t in enumerate(ts):
+                if stochastic:
+                    f = interval_dyn.f(x, t, direction='forward')
+                    backward_policy = self.z_b
+                    z = backward_policy(x,t)
+                    dw = interval_dyn.dw(x)
+                    g = interval_dyn.g(t)
+                    dt = interval_dyn.dt
+                    x = x + (f - g*z)*(dt) + g*dw
+                else: #ODE case
+                    drift_fn = self.get_drift_fn(interval_dyn)
+                    drift = drift_fn(x,t)
+                    x = x + drift * (interval_dyn.dt)
+                
+                
+                if save_traj:
+                    xs[:,i*discretisation+idx+1,::] = x.detach().cpu()
+            
+        return {'trajectory': xs, 'sample':x.detach().cpu()}
+
+    @torch.no_grad()
     def sample(self, opt, discretisation, save_traj=True, stochastic=True):
         #1.) detect number of SBP stages
         outer_it = self.z_f.starting_outer_it.item()
