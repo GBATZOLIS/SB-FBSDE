@@ -38,7 +38,8 @@ def set():
     parser.add_argument("--beta-max",       type=float, default=20,       help="max diffusion for VPSDE")
     parser.add_argument("--beta-min",       type=float, default=0.1,      help="min diffusion for VPSDE")
     parser.add_argument("--var",            type=float, default=1.,       help='diffusion coefficient in simple SDEs')
-
+    parser.add_argument("--prior_std", type=float, default=1.,       help='prior variance (assume Gausssian with mean 0)')
+    
     #---------------- Divide n Conquer settings ----------
     parser.add_argument('--log-SNR-max', type=float, default=10, help='SNR value at time t0.')
     parser.add_argument('--log-SNR-min', type=float, default=-10, help='SNR value at time 1.')

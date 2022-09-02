@@ -38,7 +38,7 @@ def main(opt):
         elif opt.training_scheme == 'divideNconquer':
             run = MultiStageRunner(opt)
             #run.sb_joint_train(opt)
-            #run.sanity_check(opt) -> passed (bug solved)
+            #run.sanity_check(opt) #-> passed (bug solved)
             run.sb_alterating_train(opt)
     elif opt.phase == 'test':
         if opt.training_scheme == 'divideNconquer':

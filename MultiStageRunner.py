@@ -395,13 +395,13 @@ class MultiStageRunner():
 
         for i in range(frames):
             axs[0, i].scatter(p_samples[i][:,0], p_samples[i][:,1], s=3)
-            axs[0, i].set_xlim(*lims)
-            axs[0, i].set_ylim(*lims)
+            #axs[0, i].set_xlim(*lims)
+            #axs[0, i].set_ylim(*lims)
         
         for i in range(frames):
             axs[1, i].scatter(q_samples[i][:,0], q_samples[i][:,1], s=3)
-            axs[1, i].set_xlim(*lims)
-            axs[1, i].set_ylim(*lims)
+            #axs[1, i].set_xlim(*lims)
+            #axs[1, i].set_ylim(*lims)
         
         fig.tight_layout()
         plt.savefig(fn_pdf)
@@ -591,7 +591,10 @@ class MultiStageRunner():
             q_samples = torch.stack(q_samples)
             stack_samples = torch.stack([p_samples, q_samples])
             fn = 'sanity-check-perturbation'
-            save_dir = os.path.join('results', opt.dir)
+            
+            save_dir = os.path.join(opt.experiment_path, 'debug')
+            os.makedirs(save_dir, exist_ok=True)
+
             self.group_scatter_plot(stack_samples, opt.problem_name, fn, save_dir)
 
     def sb_joint_train(self, opt):

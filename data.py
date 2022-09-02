@@ -37,7 +37,8 @@ def build_prior_sampler(opt, batch_size):
         return Moon(batch_size)
 
     # image+VESDE -> use (sigma_max)^2; otherwise use 1.
-    cov_coef = opt.sigma_max**2 if (util.is_image_dataset(opt) and not util.use_vp_sde(opt)) else 1.
+    #cov_coef = opt.sigma_max**2 if (util.is_image_dataset(opt) and not util.use_vp_sde(opt)) else 1.
+    cov_coef=opt.prior_std**2
     prior = td.MultivariateNormal(torch.zeros(opt.data_dim), cov_coef*torch.eye(opt.data_dim[-1]))
     return PriorSampler(prior, batch_size, opt.device)
 
@@ -47,7 +48,7 @@ def build_data_sampler(opt, batch_size):
             'gmm': MixMultiVariateNormal,
             'checkerboard': CheckerBoard,
             'moon-to-spiral': Spiral,
-        }.get(opt.problem_name)(batch_size)
+        }.get(opt.problem_name)(opt)
 
     elif util.is_image_dataset(opt):
         dataset_generator = {
@@ -68,7 +69,7 @@ def build_perturbed_data_sampler(opt, batch_size, snr):
             'gmm': PerturbedMixMultiVariateNormal,
             'checkerboard': PerturbedCheckerBoard,
             'moon-to-spiral': PerturbedSpiral,
-        }.get(opt.problem_name)(snr, batch_size)
+        }.get(opt.problem_name)(opt, snr)
 
     elif util.is_image_dataset(opt):
         dataset_generator = {
@@ -84,7 +85,12 @@ def build_perturbed_data_sampler(opt, batch_size, snr):
         raise RuntimeError()
 
 class MixMultiVariateNormal:
-    def __init__(self, batch_size, radius=12, num=8, sigmas=None):
+    def __init__(self, opt):
+        
+        batch_size = opt.samp_bs
+        radius = 12
+        num=8
+        sigma=None
 
         # build mu's and sigma's
         arc = 2*np.pi/num
@@ -113,9 +119,16 @@ class MixMultiVariateNormal:
         samples=torch.cat(samples,dim=0)
         return samples
 
+'''
+def get_perturber_fn()
+    def perturb_fn(data_class):
+        class perturbed_data_class(data_class):
+            def __init__(self, snr, batch_size, radius=12, num=8, sigmas=None):
+'''
+
 class PerturbedMixMultiVariateNormal(MixMultiVariateNormal):
-    def __init__(self, snr, batch_size, radius=12, num=8, sigmas=None):
-        super().__init__(batch_size, radius=12, num=8, sigmas=None)
+    def __init__(self, opt):
+        super().__init__(opt, snr)
         self.snr = torch.tensor(snr)
     
     def sample(self):
@@ -126,8 +139,8 @@ class PerturbedMixMultiVariateNormal(MixMultiVariateNormal):
         return perturbed_sample
 
 class CheckerBoard:
-    def __init__(self, batch_size):
-        self.batch_size = batch_size
+    def __init__(self, opt):
+        self.batch_size = opt.samp_bs
 
     def sample(self):
         n = self.batch_size
@@ -150,20 +163,69 @@ class CheckerBoard:
         return sample
 
 class PerturbedCheckerBoard(CheckerBoard):
-    def __init__(self, snr, batch_size):
-        super().__init__(batch_size)
+    def __init__(self, opt, snr):
+        super().__init__(opt)
         self.snr = torch.tensor(snr)
-    
+        self.t0 = opt.t0
+        self.T = opt.T
+        self.log_snr_max = opt.log_SNR_max
+        self.log_snr_min = opt.log_SNR_min
+        self.prior_std = opt.prior_std
+
+    '''
     def sample(self):
         not_perturbed_sample = super().sample()
         alpha = torch.sqrt(self.snr/(1+self.snr))
         sigma = 1/torch.sqrt(1+self.snr)
         perturbed_sample = alpha * not_perturbed_sample + sigma * torch.randn_like(not_perturbed_sample)
         return perturbed_sample
+    '''
+
+    def sample(self):
+        not_perturbed_sample = super().sample()
+
+        t0 = self.t0
+        T = self.T
+        log_snr_max = self.log_snr_max
+        log_snr_min = self.log_snr_min 
+        sigma_max = self.prior_std
+        alpha_max = 1.
+
+        log_snr_max, log_snr_min = torch.tensor(log_snr_max), torch.tensor(log_snr_min)
+        sigma_max, alpha_max = torch.tensor(sigma_max), torch.tensor(alpha_max)
+
+        s0 = torch.exp(log_snr_max)
+        sT = torch.exp(log_snr_min)
+
+        a0 = (torch.sqrt(sT)*sigma_max - alpha_max)/(T-t0)
+        b0 = alpha_max - a0 * t0
+
+        c0 = (sigma_max - alpha_max/torch.sqrt(s0))/(T-t0)
+        d0 = sigma_max - c0 * T
+
+        def alpha_fn(s):
+            t = t_fn(s)
+            return a0*t+b0
+
+        def sigma_fn(s):
+            t = t_fn(s)
+            return c0*t+d0
+        
+        def t_fn(s):
+            return (b0 - torch.sqrt(s)*d0)/(torch.sqrt(s)*c0 - a0)
+
+        def snr_fn(s):
+            return alpha_fn(s)**2/sigma_fn(s)**2
+
+        snr=self.snr
+        alpha = alpha_fn(snr)
+        sigma = sigma_fn(snr)
+        perturbed_sample = alpha * not_perturbed_sample + sigma * torch.randn_like(not_perturbed_sample)
+        return perturbed_sample
 
 class Spiral:
-    def __init__(self, batch_size):
-        self.batch_size = batch_size
+    def __init__(self, opt):
+        self.batch_size = opt.samp_bs
 
     def sample(self):
         n = self.batch_size
@@ -177,8 +239,8 @@ class Spiral:
         return torch.Tensor(samples)
 
 class PerturbedSpiral(Spiral):
-    def __init__(self, snr, batch_size):
-        super().__init__(batch_size)
+    def __init__(self, opt, snr):
+        super().__init__(opt)
         self.snr = torch.tensor(snr)
     
     def sample(self):
