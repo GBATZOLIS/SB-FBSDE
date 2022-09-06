@@ -141,7 +141,7 @@ def set():
     opt.experiment_problem_path = os.path.join(opt.experiments_path, opt.problem_name, str(opt.max_num_intervals))
     os.makedirs(opt.experiment_problem_path, exist_ok=True)
 
-    config_path = '%d_%d_%d_%.2f' % (opt.num_inner_iterations, opt.policy_updates, opt.base_discretisation, opt.var)
+    config_path = '%d_%d_%d_%.2f_%d' % (opt.num_inner_iterations, opt.policy_updates, opt.base_discretisation, opt.var, opt.prior_std)
     opt.experiment_path = os.path.join(opt.experiment_problem_path, config_path)
 
     opt.ckpt_path = os.path.join(opt.experiment_path, 'checkpoints')
