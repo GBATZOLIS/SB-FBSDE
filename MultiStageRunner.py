@@ -263,22 +263,22 @@ class MultiStageRunner():
                 loss = torch.mean(torch.tensor(losses)).item()
                 backward_loss[str(interval_key+1)] = loss
 
-                if inner_it % opt.inner_it_save_freq == 0 and inner_it !=0:
-                    keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
-                    util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
+            if inner_it % opt.inner_it_save_freq == 0 and inner_it !=0:
+                keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
+                util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
 
-                if inner_it % 5 == 0:
-                    with torch.no_grad():
-                        sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
-                        sample = sample.to('cpu')
-                        gt_sample = inter_pq_s[0][0].sample()
+            if inner_it % 5 == 0:
+                with torch.no_grad():
+                    sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
+                    sample = sample.to('cpu')
+                    gt_sample = inter_pq_s[0][0].sample()
                 
-                    problem_name = opt.problem_name
+                problem_name = opt.problem_name
                     
-                    p, q = inter_pq_s[0]
-                    dyn = sde.build(opt, p, q)
-                    img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
-                    self.writer.add_image('samples and ODE vector field, outer_it:%d - inner_it:%d' % (outer_it, inner_it), img)
+                p, q = inter_pq_s[0]
+                dyn = sde.build(opt, p, q)
+                img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
+                self.writer.add_image('samples and ODE vector field, outer_it:%d - inner_it:%d' % (outer_it, inner_it), img)
             
             self.global_step += 1
 
@@ -307,7 +307,7 @@ class MultiStageRunner():
         self.z_f.register_buffer('monitor_loss', torch.tensor(self.monitor_loss))
 
     def sb_alterating_train(self, opt):
-        assert not util.is_image_dataset(opt)
+        #assert not util.is_image_dataset(opt)
         policy_f, policy_b = self.z_f, self.z_b
         policy_f = activate_policy(policy_f)
         policy_b = activate_policy(policy_b)

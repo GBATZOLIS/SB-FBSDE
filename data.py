@@ -79,7 +79,7 @@ def build_perturbed_data_sampler(opt, batch_size, snr):
             'cifar10':    generate_cifar10_dataset,
         }.get(opt.problem_name)
         dataset = dataset_generator(opt)
-        return PerturbedDataSampler(snr, dataset, batch_size, opt.device)
+        return PerturbedDataSampler(opt, snr, dataset, batch_size, opt.device)
 
     else:
         raise RuntimeError()
@@ -288,16 +288,66 @@ class DataSampler: # a dump data sampler
         return data[0].to(self.device)
 
 class PerturbedDataSampler(DataSampler): #perturbed dump data sampler
-    def __init__(self, snr, dataset, batch_size, device):
+    def __init__(self, opt, snr, dataset, batch_size, device):
         super().__init__(dataset, batch_size, device)
         self.snr = torch.tensor(snr)
+        self.t0 = opt.t0
+        self.T = opt.T
+        self.log_snr_max = opt.log_SNR_max
+        self.log_snr_min = opt.log_SNR_min
+        self.prior_std = opt.prior_std
     
+    '''
     def sample(self):
         not_perturbed_sample = super().sample()
         alpha = torch.sqrt(self.snr/(1+self.snr))
         sigma = 1/torch.sqrt(1+self.snr)
         perturbed_sample = alpha * not_perturbed_sample + sigma * torch.rand_like(not_perturbed_sample)
         return perturbed_sample
+    '''
+
+    def sample(self):
+        not_perturbed_sample = super().sample()
+
+        t0 = self.t0
+        T = self.T
+        log_snr_max = self.log_snr_max
+        log_snr_min = self.log_snr_min 
+        sigma_max = self.prior_std
+        alpha_max = 1.
+
+        log_snr_max, log_snr_min = torch.tensor(log_snr_max), torch.tensor(log_snr_min)
+        sigma_max, alpha_max = torch.tensor(sigma_max), torch.tensor(alpha_max)
+
+        s0 = torch.exp(log_snr_max)
+        sT = torch.exp(log_snr_min)
+
+        a0 = (torch.sqrt(sT)*sigma_max - alpha_max)/(T-t0)
+        b0 = alpha_max - a0 * t0
+
+        c0 = (sigma_max - alpha_max/torch.sqrt(s0))/(T-t0)
+        d0 = sigma_max - c0 * T
+
+        def alpha_fn(s):
+            t = t_fn(s)
+            return a0*t+b0
+
+        def sigma_fn(s):
+            t = t_fn(s)
+            return c0*t+d0
+        
+        def t_fn(s):
+            return (b0 - torch.sqrt(s)*d0)/(torch.sqrt(s)*c0 - a0)
+
+        def snr_fn(s):
+            return alpha_fn(s)**2/sigma_fn(s)**2
+
+        snr=self.snr
+        alpha = alpha_fn(snr)
+        sigma = sigma_fn(snr)
+        perturbed_sample = alpha * not_perturbed_sample + sigma * torch.randn_like(not_perturbed_sample)
+        return perturbed_sample
+
 
 class PriorSampler: # a dump prior sampler to align with DataSampler
     def __init__(self, prior, batch_size, device):

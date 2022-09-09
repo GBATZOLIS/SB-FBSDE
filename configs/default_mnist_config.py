@@ -28,7 +28,7 @@ def get_mnist_default_configs():
 
   # sampling
   config.snr = 0.16
-  config.samp_bs = 1000
+  config.samp_bs = 10
 
   config.sigma_min = 0.01
   config.sigma_max = 50

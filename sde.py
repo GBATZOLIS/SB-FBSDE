@@ -96,6 +96,7 @@ class BaseSDE(metaclass=abc.ABCMeta):
             x = initial_sample
 
         apply_trick1, apply_trick2, apply_trick3 = compute_tricks_condition(opt, apply_trick, direction)
+        apply_trick1 = False
 
         # [trick 1] propagate img (x0) by a tiny step
         if apply_trick1: x = self.propagate_x0_trick(x, policy, direction)
