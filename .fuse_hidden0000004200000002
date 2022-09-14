@@ -181,64 +181,6 @@ class MultiStageRunner():
         gc.collect()
         return xs, zs, ts
 
-    def compute_val_loss(self, opt, inter_pq_s, discretisation):
-        #validation start
-        freeze_policy(self.z_f)
-        freeze_policy(self.z_b)
-
-        #*** I need to switch z_f and z_b to the ema weights.
-
-        intervals = list(inter_pq_s.keys()).copy()
-        forward_loss, backward_loss = {}, {}
-        for interval_key in intervals:
-            p, q = inter_pq_s[interval_key]
-
-            interval_dyn = sde.build(opt, p, q)
-            ts = torch.linspace(p.time, q.time, discretisation)
-            new_dt = ts[1]-ts[0]
-            interval_dyn.dt = new_dt
-            ts = ts.to(opt.device)
-
-            loss = self.compute_interval_val_loss(opt, 'forward', interval_dyn, ts)
-            forward_loss[str(interval_key+1)] = loss
-
-            loss = self.compute_interval_val_loss(opt, 'backward', interval_dyn, ts)
-            backward_loss[str(interval_key+1)] = loss
-        
-        average_forward_loss = sum([forward_loss[key] for key in forward_loss.keys()])/len(forward_loss.keys())
-        average_backward_loss = sum([backward_loss[key] for key in backward_loss.keys()])/len(backward_loss.keys())
-        monitor_loss = (average_forward_loss + average_backward_loss)/2
-
-        #validation end
-        activate_policy(self.z_f)
-        activate_policy(self.z_b)
-
-        return monitor_loss
-
-    def compute_interval_val_loss(self, opt, direction, dyn, ts):
-        policy_opt, policy_impt = {
-            'forward':  [self.z_f, self.z_b], # train forward,   sample from backward
-            'backward': [self.z_b, self.z_f], # train backward, sample from forward
-        }.get(direction)
-
-        batch_x = opt.samp_bs
-        batch_t = ts.size(0)
-        xs, zs_impt, ts_ = self.sample_train_data(opt, policy_impt, dyn, ts)
-        xs=util.flatten_dim01(xs)
-        zs_impt=util.flatten_dim01(zs_impt)
-        ts_=ts_.repeat(batch_x)
-        assert xs.shape[0] == ts_.shape[0]
-        assert zs_impt.shape[0] == ts_.shape[0]
-
-        xs=xs.to(opt.device)
-        zs_impt=zs_impt.to(opt.device)
-
-        loss, zs = compute_sb_nll_alternate_train(
-                opt, dyn, ts_, xs, zs_impt, policy_opt, return_z=True
-            )
-
-        assert not torch.isnan(loss)
-        return loss
 
     def alternating_policy_update(self, opt, direction, dyn, ts, tr_steps=1):
         policy_opt, policy_impt = {
@@ -287,7 +229,7 @@ class MultiStageRunner():
 
         return losses
 
-    
+
     def sb_outer_alternating_iteration(self, opt,
                                             optimizer_f, optimizer_b, 
                                             sched_f, sched_b, 
@@ -295,7 +237,7 @@ class MultiStageRunner():
                                             tr_steps, outer_it):
 
         start_inner_it = self.starting_inner_it
-        early_stopper = EarlyStoppingCallback(patience=100, loss_values=self.monitor_loss)
+        early_stopper = EarlyStoppingCallback(patience=10, loss_values=self.monitor_loss)
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
             stop = early_stopper()
             if stop:
@@ -325,7 +267,7 @@ class MultiStageRunner():
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
                 util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
 
-            if inner_it % 100 == 0:
+            if inner_it % 5 == 0:
                 with torch.no_grad():
                     sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
                     sample = sample.to('cpu')
@@ -335,7 +277,7 @@ class MultiStageRunner():
                 if img_dataset:
                     sample_imgs =  samples.cpu()
                     grid_images = torchvision.utils.make_grid(sample_imgs, normalize=True, scale_each=True)
-                    self.writer.add_image('samples -- outer_it:%d - inner_it:%d' % (out_it, inner_it), grid_images, self.global_step)
+                    self.writer.add_image('samples - outer_it:%d - inner_it:%d' % (out_it, inner_it)), grid_images, pl_module.current_epoch)
                 else:
                     problem_name = opt.problem_name
                         
