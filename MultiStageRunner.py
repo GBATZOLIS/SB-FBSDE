@@ -295,7 +295,7 @@ class MultiStageRunner():
                                             tr_steps, outer_it):
 
         start_inner_it = self.starting_inner_it
-        early_stopper = EarlyStoppingCallback(patience=100, loss_values=self.monitor_loss)
+        early_stopper = EarlyStoppingCallback(patience=200, loss_values=self.monitor_loss)
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
             stop = early_stopper()
             if stop:
@@ -325,7 +325,7 @@ class MultiStageRunner():
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
                 util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
 
-            if inner_it % 1 == 0:
+            if inner_it % 100 == 0:
                 with torch.no_grad():
                     sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
                     sample = sample.to('cpu')
