@@ -9,7 +9,7 @@ from torch.optim import SGD, RMSprop, Adagrad, AdamW, lr_scheduler, Adam
 from torch.utils.tensorboard import SummaryWriter
 #from torch_ema import TorchEMA as ExponentialMovingAverage
 from torch_ema import ExponentialMovingAverage
-
+import torchvision
 import policy
 import sde
 from loss import compute_sb_nll_alternate_train, compute_sb_nll_joint_train
@@ -325,7 +325,7 @@ class MultiStageRunner():
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
                 util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
 
-            if inner_it % 100 == 0:
+            if inner_it % 1 == 0:
                 with torch.no_grad():
                     sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
                     sample = sample.to('cpu')
@@ -333,9 +333,9 @@ class MultiStageRunner():
                 
                 img_dataset = util.is_image_dataset(opt)
                 if img_dataset:
-                    sample_imgs =  samples.cpu()
+                    sample_imgs =  sample.cpu()
                     grid_images = torchvision.utils.make_grid(sample_imgs, normalize=True, scale_each=True)
-                    self.writer.add_image('samples -- outer_it:%d - inner_it:%d' % (out_it, inner_it), grid_images, self.global_step)
+                    self.writer.add_image('samples -- outer_it:%d - inner_it:%d' % (outer_it, inner_it), grid_images, self.global_step)
                 else:
                     problem_name = opt.problem_name
                         
