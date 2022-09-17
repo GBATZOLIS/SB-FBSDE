@@ -494,6 +494,15 @@ class MultiStageRunner():
 
     def experimental_features(self, opt):
         self.visualize_trajectories(opt, discretisation=4, stochastic=False)
+    
+    def generate_samples(self, opt, discretisation, stochastic):
+        #save_path = os.path.join(opt.experiment_path, 'testing')
+        #os.makedirs(save_path, exist_ok=True)
+        sampled = self.sample(opt, discretisation=discretisation, stochastic=stochastic)
+        sample = sampled['sample']
+        sample_imgs =  sample.cpu()
+        grid_images = torchvision.utils.make_grid(sample_imgs, normalize=True, scale_each=True)
+        self.writer.add_image('test samples - discretisation:%d - %s' % (discretisation, 'stochastic' if stochastic else 'deterministic'), grid_images)
 
     def visualize_trajectories(self, opt, discretisation=16, stochastic=True):
         save_path = os.path.join(opt.experiment_path, 'testing')
