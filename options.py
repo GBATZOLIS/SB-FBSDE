@@ -169,8 +169,8 @@ def set():
     if opt.DSM_warmup:
         assert opt.train_method == 'alternate'
 
-    if opt.load is not None:
-        assert not opt.DSM_warmup, 'Already load some models, no need to DSM-warm-up!'
+    #if opt.load is not None:
+    #    assert not opt.DSM_warmup, 'Already load some models, no need to DSM-warm-up!'
 
     if opt.train_method is not None:
         if opt.num_FID_sample>10000:

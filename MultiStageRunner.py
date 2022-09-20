@@ -358,11 +358,14 @@ class MultiStageRunner():
             self.writer.add_scalar('avg_backward_loss', average_backward_loss, global_step=self.global_step)
             self.writer.add_scalar('monitor_loss', monitor_loss, global_step=self.global_step)
 
+            if inner_it % 100 == 50:
+                self.writer.flush()
+
             self.z_f.starting_inner_it = torch.tensor(inner_it)
             self.starting_inner_it = inner_it
             self.z_f.global_step = torch.tensor(self.global_step)
             self.z_f.register_buffer('monitor_loss', torch.tensor(early_stopper.loss_values))
-            print(self.z_f.monitor_loss)
+            #print(self.z_f.monitor_loss)
         
         #reset after the end of the outer iteration.
         self.starting_inner_it = 1 
@@ -493,8 +496,13 @@ class MultiStageRunner():
 
 
     def experimental_features(self, opt):
-        self.visualize_trajectories(opt, discretisation=4, stochastic=False)
-    
+        img_dataset = util.is_image_dataset(opt)
+        if img_dataset:
+            self.generate_samples(opt, discretisation=16, stochastic=True)
+        else:
+            self.visualize_trajectories(opt, discretisation=4, stochastic=False)
+        
+
     def generate_samples(self, opt, discretisation, stochastic):
         #save_path = os.path.join(opt.experiment_path, 'testing')
         #os.makedirs(save_path, exist_ok=True)
@@ -502,7 +510,11 @@ class MultiStageRunner():
         sample = sampled['sample']
         sample_imgs =  sample.cpu()
         grid_images = torchvision.utils.make_grid(sample_imgs, normalize=True, scale_each=True)
-        self.writer.add_image('test samples - discretisation:%d - %s' % (discretisation, 'stochastic' if stochastic else 'deterministic'), grid_images)
+
+        writer=SummaryWriter(log_dir=os.path.join(opt.experiment_path, 'testing'))
+        writer.add_image('test samples - discretisation:%d - %s' % (discretisation, 'stochastic' if stochastic else 'deterministic'), grid_images)
+        writer.flush()
+        writer.close()
 
     def visualize_trajectories(self, opt, discretisation=16, stochastic=True):
         save_path = os.path.join(opt.experiment_path, 'testing')
