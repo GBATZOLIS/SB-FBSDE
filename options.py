@@ -49,6 +49,7 @@ def set():
     parser.add_argument('--inner_it_save_freq', type=int, default=10)
     parser.add_argument('--policy-updates', type=int, default=25, help='alternating policy updates')
     parser.add_argument('--base-discretisation', type=int, default=8, help='base discretisation')
+    parser.add_argument("--discretisation-policy", type=str,   default='double', choices=['double', 'constant'])
     
     # --------------- SB training & sampling (corrector) ---------------
     parser.add_argument("--training-scheme", type=str, default='standard', help='training schem. Options=[standard, divideNconquer]')

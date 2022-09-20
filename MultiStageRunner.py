@@ -386,14 +386,23 @@ class MultiStageRunner():
         tr_steps=opt.policy_updates
         for outer_it in range(self.starting_outer_it, outer_iterations+1):
             inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
+            new_discretisation = self.compute_discretisation(opt, outer_it)
             self.sb_outer_alternating_iteration(opt,
                                             optimizer_f, optimizer_b, 
                                             sched_f, sched_b, 
-                                            inter_pq_s, self.base_discretisation * 2 ** (outer_it-1), 
+                                            inter_pq_s, new_discretisation, 
                                             tr_steps, outer_it)
             num_intervals = num_intervals // 2
 
             self.z_f.starting_outer_it += 1
+    
+    def compute_discretisation(self, opt, outer_it):
+        if opt.discretisation_policy == 'double':
+            return self.base_discretisation * 2 ** (outer_it-1)
+        elif opt.discretisation_policy == 'constant':
+            return self.base_discretisation
+        else:
+            return NotImplementedError('%s is not supported. Please implement it here.' % opt.discretisation_policy)
 
     def tensorboard_scatter_and_quiver_plot(self, opt, p, dyn, sample):
         drift_fn = self.get_drift_fn(dyn)
