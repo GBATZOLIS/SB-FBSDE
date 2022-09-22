@@ -90,4 +90,7 @@ class MultiStageSchrodingerBridgePolicy(SchrodingerBridgePolicy):
         self.register_buffer('starting_outer_it', torch.tensor(1, dtype=torch.int32))
         self.register_buffer('starting_inner_it', torch.tensor(1, dtype=torch.int32))
         self.register_buffer('global_step', torch.tensor(0, dtype=torch.int32))
-        self.register_buffer('monitor_loss', torch.tensor([]))
+        
+        for i in range(1, opt.max_num_intervals+1):
+            self.register_buffer('outer_it_1_forward_loss_%d' % i, torch.tensor([]))
+            self.register_buffer('outer_it_1_backward_loss_%d' % i, torch.tensor([]))

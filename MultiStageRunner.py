@@ -89,7 +89,24 @@ class EarlyStoppingCallback():
                 return True
             else:
                 return False
-        
+
+class MultistageEarlyStoppingCallback():
+    def __init__(self, patience, loss_values):
+        self.early_stopping_callbacks={}
+        for direction in loss_values.keys():
+            for stage in loss_values[direction].keys():
+                self.early_stopping_callbacks['%s_%s' % (direction, stage)] = EarlyStoppingCallback(patience, loss_values[direction][stage])
+    
+    def add_value(self, value):
+        for direction in value.keys():
+            for stage in value[direction].keys():
+                self.early_stopping_callbacks['%s_%s' % (direction, stage)].add_value(value[direction][stage])
+
+    def __call__(self):
+        checks = []
+        for callback in self.early_stopping_callbacks.keys():
+            checks.append(self.early_stopping_callbacks[callback]())
+        return all(checks)
         
 class MultiStageRunner():
     def __init__(self, opt):
@@ -119,7 +136,16 @@ class MultiStageRunner():
         self.starting_outer_it = self.z_f.starting_outer_it.item()
         self.starting_inner_it = self.z_f.starting_inner_it.item()
         self.global_step = self.z_f.global_step.item()
-        self.monitor_loss = self.z_f.monitor_loss.tolist()
+
+        
+        self.losses = {}
+        self.losses['outer_it_%d' % self.starting_outer_it] = {}
+        self.losses['outer_it_%d' % self.starting_outer_it]['forward'] = {}
+        self.losses['outer_it_%d' % self.starting_outer_it]['backward'] = {}
+
+        for i in range(1, opt.max_num_intervals//2**(self.starting_outer_it-1)+1):
+            self.losses['outer_it_%d' % self.starting_outer_it]['forward'][str(i)] = getattr(self.z_f, 'outer_it_%d_forward_loss_%d' % (self.starting_outer_it, i)).tolist()
+            self.losses['outer_it_%d' % self.starting_outer_it]['backward'][str(i)] = getattr(self.z_f, 'outer_it_%d_backward_loss_%d' % (self.starting_outer_it, i)).tolist()
 
         if opt.log_tb: # tensorboard related things
             self.it_f = 0
@@ -295,7 +321,7 @@ class MultiStageRunner():
                                             tr_steps, outer_it):
 
         start_inner_it = self.starting_inner_it
-        early_stopper = EarlyStoppingCallback(patience=200, loss_values=self.monitor_loss)
+        early_stopper = MultistageEarlyStoppingCallback(patience=200, loss_values=self.losses['outer_it_%d' % outer_it])
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
             stop = early_stopper()
             if stop:
@@ -316,10 +342,12 @@ class MultiStageRunner():
                 losses = self.alternating_policy_update(opt, 'forward', interval_dyn, ts, tr_steps=tr_steps)
                 loss = torch.mean(torch.tensor(losses)).item()
                 forward_loss[str(interval_key+1)] = loss
+                self.losses['outer_it_%d' % outer_it]['forward'][str(interval_key+1)].append(loss)
 
                 losses = self.alternating_policy_update(opt, 'backward', interval_dyn, ts, tr_steps=tr_steps)
                 loss = torch.mean(torch.tensor(losses)).item()
                 backward_loss[str(interval_key+1)] = loss
+                self.losses['outer_it_%d' % outer_it]['backward'][str(interval_key+1)].append(loss)
 
             if inner_it % opt.inner_it_save_freq == 0 and inner_it !=0:
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
@@ -352,7 +380,8 @@ class MultiStageRunner():
             average_forward_loss = sum([forward_loss[key] for key in forward_loss.keys()])/len(forward_loss.keys())
             average_backward_loss = sum([backward_loss[key] for key in backward_loss.keys()])/len(backward_loss.keys())
             monitor_loss = (average_forward_loss + average_backward_loss)/2
-            early_stopper.add_value(monitor_loss)
+            early_stopper.add_value({'forward':forward_loss, 
+                                     'backward':backward_loss})
             
             self.writer.add_scalar('avg_forward_loss', average_forward_loss, global_step=self.global_step)
             self.writer.add_scalar('avg_backward_loss', average_backward_loss, global_step=self.global_step)
@@ -364,14 +393,15 @@ class MultiStageRunner():
             self.z_f.starting_inner_it = torch.tensor(inner_it)
             self.starting_inner_it = inner_it
             self.z_f.global_step = torch.tensor(self.global_step)
-            self.z_f.register_buffer('monitor_loss', torch.tensor(early_stopper.loss_values))
-            #print(self.z_f.monitor_loss)
+
+            for i in range(1, opt.max_num_intervals//2**(outer_it-1)+1):
+                self.z_f.register_buffer('outer_it_%d_forward_loss_%d' % (outer_it, i), self.losses['outer_it_%d' % outer_it]['forward'][str(i)])
+                self.z_f.register_buffer('outer_it_%d_backward_loss_%d' % (outer_it, i), self.losses['outer_it_%d' % outer_it]['backward'][str(i)])
+
         
         #reset after the end of the outer iteration.
-        self.starting_inner_it = 1 
-        self.monitor_loss = []
+        self.starting_inner_it = 1
         self.z_f.starting_inner_it = torch.tensor(self.starting_inner_it)
-        self.z_f.register_buffer('monitor_loss', torch.tensor(self.monitor_loss))
 
     def sb_alterating_train(self, opt):
         #assert not util.is_image_dataset(opt)
@@ -387,6 +417,15 @@ class MultiStageRunner():
         for outer_it in range(self.starting_outer_it, outer_iterations+1):
             inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
             new_discretisation = self.compute_discretisation(opt, outer_it)
+            
+            #initialise the losses for the next outer iteration
+            self.losses['outer_it_%d' % outer_it]={}
+            self.losses['outer_it_%d' % outer_it]['forward']={}
+            self.losses['outer_it_%d' % outer_it]['backward']={}
+            for i in range(1, opt.max_num_intervals//2**(outer_it-1)+1):
+                self.losses['outer_it_%d' % outer_it]['forward'][str(i)] = []
+                self.losses['outer_it_%d' % outer_it]['backward'][str(i)] = []
+
             self.sb_outer_alternating_iteration(opt,
                                             optimizer_f, optimizer_b, 
                                             sched_f, sched_b, 
