@@ -395,8 +395,8 @@ class MultiStageRunner():
             self.z_f.global_step = torch.tensor(self.global_step)
 
             for i in range(1, opt.max_num_intervals//2**(outer_it-1)+1):
-                self.z_f.register_buffer('outer_it_%d_forward_loss_%d' % (outer_it, i), self.losses['outer_it_%d' % outer_it]['forward'][str(i)])
-                self.z_f.register_buffer('outer_it_%d_backward_loss_%d' % (outer_it, i), self.losses['outer_it_%d' % outer_it]['backward'][str(i)])
+                self.z_f.register_buffer('outer_it_%d_forward_loss_%d' % (outer_it, i), torch.tensor(self.losses['outer_it_%d' % outer_it]['forward'][str(i)]))
+                self.z_f.register_buffer('outer_it_%d_backward_loss_%d' % (outer_it, i), torch.tensor(self.losses['outer_it_%d' % outer_it]['backward'][str(i)]))
 
         
         #reset after the end of the outer iteration.
