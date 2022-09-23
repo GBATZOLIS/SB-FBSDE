@@ -321,7 +321,7 @@ class MultiStageRunner():
                                             tr_steps, outer_it):
 
         start_inner_it = self.starting_inner_it
-        early_stopper = MultistageEarlyStoppingCallback(patience=200, loss_values=self.losses['outer_it_%d' % outer_it])
+        early_stopper = MultistageEarlyStoppingCallback(patience=opt.stopping_patience, loss_values=self.losses['outer_it_%d' % outer_it])
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
             stop = early_stopper()
             if stop:
