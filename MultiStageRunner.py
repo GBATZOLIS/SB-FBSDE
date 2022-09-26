@@ -353,7 +353,7 @@ class MultiStageRunner():
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
                 util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
 
-            if inner_it % 250 == 0:
+            if inner_it % opt.sampling_freq == 0:
                 with torch.no_grad():
                     sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
                     sample = sample.to('cpu')

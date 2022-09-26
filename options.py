@@ -51,6 +51,8 @@ def set():
     parser.add_argument('--base-discretisation', type=int, default=8, help='base discretisation')
     parser.add_argument("--discretisation-policy", type=str,   default='double', choices=['double', 'constant'])
     parser.add_argument('--stopping-patience', type=int, default=250, help='Stopping patience for every outer loop iteration.')
+    parser.add_argument('--sampling-freq', type=int, default=250, help='Sampling frequency while training.')
+
     
     # --------------- SB training & sampling (corrector) ---------------
     parser.add_argument("--training-scheme", type=str, default='standard', help='training schem. Options=[standard, divideNconquer]')
