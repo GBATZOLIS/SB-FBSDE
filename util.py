@@ -117,8 +117,11 @@ def restore_checkpoint(opt, runner, load_name):
             for k in ckpt_keys:
                 obj = getattr(runner,k)
 
-                if k == 'z_f':
-                    obj.register_buffer('monitor_loss', checkpoint[k]['monitor_loss'])
+                if k == 'z_f' and opt.training_scheme == 'divideNconquer':
+                    #obj.register_buffer('monitor_loss', checkpoint[k]['monitor_loss'])
+                    for i in range(1, opt.max_num_intervals+1):
+                        obj.register_buffer('outer_it_1_forward_loss_%d' % i, checkpoint[k]['outer_it_1_forward_loss_%d' % i])
+                        obj.register_buffer('outer_it_1_backward_loss_%d' % i, checkpoint[k]['outer_it_1_backward_loss_%d' % i])
 
                 obj.load_state_dict(checkpoint[k])
 
