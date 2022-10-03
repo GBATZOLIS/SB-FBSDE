@@ -50,8 +50,8 @@ def set():
     parser.add_argument('--policy-updates', type=int, default=25, help='alternating policy updates')
     parser.add_argument('--base-discretisation', type=int, default=8, help='base discretisation')
     parser.add_argument("--discretisation-policy", type=str,   default='double', choices=['double', 'constant'])
-    parser.add_argument('--stopping-patience', type=int, default=250, help='Stopping patience for every outer loop iteration.')
-    parser.add_argument('--sampling-freq', type=int, default=250, help='Sampling frequency while training.')
+    parser.add_argument('--stopping-patience', type=int, default=1000, help='Stopping patience for every outer loop iteration.')
+    parser.add_argument('--sampling-freq', type=int, default=500, help='Sampling frequency while training.')
 
     
     # --------------- SB training & sampling (corrector) ---------------

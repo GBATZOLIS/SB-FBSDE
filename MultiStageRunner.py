@@ -334,13 +334,13 @@ class MultiStageRunner():
     def convergence_status_to_probs(self, status, k=2):
         n = len(status.keys())
         s = sum([status[key] for key in status.keys()])
-        a = k / (n - s + k*s)
+        a = k / (s + k*(n-s))
         probs = {}
         for key in status.keys():
             if status[key] == 1:
-                probs[key] = a
-            else:
                 probs[key] = a/k
+            else:
+                probs[key] = a
         return probs
 
     def sb_outer_alternating_iteration(self, opt,
@@ -359,9 +359,13 @@ class MultiStageRunner():
             status = early_stopper.get_stages_status()
             probs = self.convergence_status_to_probs(status)
             intervals = list(probs.keys())
+            if inner_it % 1000 == 0:
+                print(probs)
+                
             weights = [probs[key] for key in intervals]
             interval_key = random.choices(intervals, weights=weights, k=1)[0]
-
+            
+            interval_key = int(interval_key)-1
             p, q = inter_pq_s[interval_key]
 
             interval_dyn = sde.build(opt, p, q)
@@ -403,8 +407,8 @@ class MultiStageRunner():
             
             self.global_step += 1
 
-            self.writer.add_scalars('forward_loss_%s' % str(interval_key+1), f_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['forward'][str(interval_key+1)]))
-            self.writer.add_scalars('backward_loss_%s' % str(interval_key+1), b_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['backward'][str(interval_key+1)]))
+            self.writer.add_scalar('forward_loss_%s' % str(interval_key+1), f_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['forward'][str(interval_key+1)]))
+            self.writer.add_scalar('backward_loss_%s' % str(interval_key+1), b_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['backward'][str(interval_key+1)]))
 
             early_stopper.add_stage_value(f_loss, 'forward', str(interval_key+1))
             early_stopper.add_stage_value(b_loss, 'backward', str(interval_key+1))
