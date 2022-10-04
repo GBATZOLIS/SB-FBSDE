@@ -359,6 +359,7 @@ class MultiStageRunner():
             status = early_stopper.get_stages_status()
             probs = self.convergence_status_to_probs(status)
             intervals = list(probs.keys())
+
             if inner_it % 1000 == 0:
                 print(probs)
                 
@@ -407,8 +408,8 @@ class MultiStageRunner():
             
             self.global_step += 1
 
-            self.writer.add_scalar('forward_loss_%s' % str(interval_key+1), f_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['forward'][str(interval_key+1)]))
-            self.writer.add_scalar('backward_loss_%s' % str(interval_key+1), b_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['backward'][str(interval_key+1)]))
+            self.writer.add_scalar('outer_it_%d_forward_loss_%d' % (outer_it, (interval_key+1)), f_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['forward'][str(interval_key+1)]))
+            self.writer.add_scalar('outer_it_%d_backward_loss_%d' % (outer_it, (interval_key+1)), b_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['backward'][str(interval_key+1)]))
 
             early_stopper.add_stage_value(f_loss, 'forward', str(interval_key+1))
             early_stopper.add_stage_value(b_loss, 'backward', str(interval_key+1))
