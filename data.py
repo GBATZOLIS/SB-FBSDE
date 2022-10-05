@@ -16,7 +16,7 @@ def build_boundary_distribution(opt):
 
     opt.data_dim = get_data_dim(opt.problem_name)
     prior = build_prior_sampler(opt, opt.samp_bs)
-    pdata = build_data_sampler(opt, opt.samp_bs)
+    pdata = build_data_sampler(opt, opt.samp_bs, phase='train')
 
     return pdata, prior
 

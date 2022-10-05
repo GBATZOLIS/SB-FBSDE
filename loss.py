@@ -28,6 +28,7 @@ def compute_div_gz(opt, dyn, ts, xs, policy, return_zs=False):
 
     e = sample_e(opt, xs)
     e_dzdx = torch.autograd.grad(gzs, xs, e, create_graph=True)[0]
+    
     div_gz = e_dzdx * e
     # approx_div_gz = e_dzdx_e.view(y.shape[0], -1).sum(dim=1)
 
@@ -50,6 +51,8 @@ def compute_sb_nll_alternate_train(opt, dyn, ts, xs, zs_impt, policy_opt, return
         loss = zs*(0.5*zs + zs_impt) + div_gz
         #loss = torch.sum(loss * dyn.dt) / batch_x / batch_t  # sum over x_dim and T, mean over batch
         loss = torch.sum(loss * dyn.dt) / batch_x_times_batch_t  # sum over x_dim and T, mean over batch
+    
+    
     return loss, zs if return_z else loss
 
 

@@ -156,6 +156,7 @@ class MultiStageRunner():
 
         
         self.losses = {}
+        self.losses['outer_it_%d' % self.starting_outer_it] = {}
         for phase in ['train', 'val']:
             self.losses['outer_it_%d' % self.starting_outer_it][phase] = {}
             self.losses['outer_it_%d' % self.starting_outer_it][phase]['forward'] = {}
@@ -223,7 +224,7 @@ class MultiStageRunner():
         assert xs.shape == zs.shape
         gc.collect()
         return xs, zs, ts
-
+    
     def compute_val_loss(self, opt, inter_pq_s, discretisation):
         #validation start
         freeze_policy(self.z_f)
@@ -264,8 +265,11 @@ class MultiStageRunner():
         batch_t = ts.size(0)
 
         losses = []
-        for _ in range(dyn.num_sample // dyn.batch_size): #number of batches in the validation dataset.
+        
+        val_batches = int(opt.val_dataset_size * dyn.p.num_sample / dyn.p.batch_size)
+        for _ in tqdm(range(val_batches)): #number of batches in the validation dataset.
             xs, zs_impt, ts_ = self.sample_train_data(opt, policy_impt, dyn, ts)
+            xs.requires_grad_(True)
             xs = util.flatten_dim01(xs)
             zs_impt = util.flatten_dim01(zs_impt)
             ts_ = ts_.repeat(batch_x)
@@ -279,12 +283,18 @@ class MultiStageRunner():
             loss, zs = compute_sb_nll_alternate_train(
                     opt, dyn, ts_, xs, zs_impt, policy_opt, return_z=True
                 )
-
+            print(loss)
             assert not torch.isnan(loss)
-            losses.append(loss)
+            
+            #mem = float(torch.cuda.memory_allocated() / (1024 * 1024))
+            #print("memory allocated:", mem, "MiB")
+            
+            losses.append(loss.item()) #important -> loss.item() 
+
+            '''All loss tensors which are saved outside of the optimization cycle (i.e. outside the for g_iter in range(generator_iters) loop) need to be detached from the graph. Otherwise, you are keeping all previous computation graphs in memory.'''
         
         #return the mean validation loss in that interval
-        return torch.mean(losses)
+        return np.mean(losses)
 
     def alternating_policy_update(self, opt, direction, dyn, ts, tr_steps=1):
         policy_opt, policy_impt = {
@@ -418,6 +428,7 @@ class MultiStageRunner():
             self.z_f.register_buffer('outer_it_%d_train_backward_loss_%d' % (outer_it, (interval_key+1)), torch.tensor(self.losses['outer_it_%d' % outer_it]['train']['backward'][str(interval_key+1)]))
             
             if inner_it % opt.val_freq == 0:
+                print('Validation starts...')
                 val_loss = self.compute_val_loss(opt, val_inter_pq_s, discretisation)
                 val_forward_loss = val_loss['forward_loss']
                 val_backward_loss = val_loss['backward_loss']

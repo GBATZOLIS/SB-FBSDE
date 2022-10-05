@@ -53,6 +53,8 @@ def set():
     parser.add_argument('--stopping-patience', type=int, default=1000, help='Stopping patience for every outer loop iteration.')
     parser.add_argument('--sampling-freq', type=int, default=500, help='Sampling frequency while training.')
     parser.add_argument('--val-freq', type=int, default=1000, help='Number of training iteration before every validation step')
+    parser.add_argument('--val-dataset-size', type=float, default=0.05, help='Percentage of the validation dataset to be used in training.')
+
     
     # --------------- SB training & sampling (corrector) ---------------
     parser.add_argument("--training-scheme", type=str, default='standard', help='training schem. Options=[standard, divideNconquer]')
