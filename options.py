@@ -52,7 +52,7 @@ def set():
     parser.add_argument("--discretisation-policy", type=str,   default='double', choices=['double', 'constant'])
     parser.add_argument('--stopping-patience', type=int, default=1000, help='Stopping patience for every outer loop iteration.')
     parser.add_argument('--sampling-freq', type=int, default=500, help='Sampling frequency while training.')
-
+    parser.add_argument('--val-freq', type=int, default=1000, help='Number of training iteration before every validation step')
     
     # --------------- SB training & sampling (corrector) ---------------
     parser.add_argument("--training-scheme", type=str, default='standard', help='training schem. Options=[standard, divideNconquer]')

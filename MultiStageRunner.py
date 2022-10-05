@@ -156,13 +156,14 @@ class MultiStageRunner():
 
         
         self.losses = {}
-        self.losses['outer_it_%d' % self.starting_outer_it] = {}
-        self.losses['outer_it_%d' % self.starting_outer_it]['forward'] = {}
-        self.losses['outer_it_%d' % self.starting_outer_it]['backward'] = {}
+        for phase in ['train', 'val']:
+            self.losses['outer_it_%d' % self.starting_outer_it][phase] = {}
+            self.losses['outer_it_%d' % self.starting_outer_it][phase]['forward'] = {}
+            self.losses['outer_it_%d' % self.starting_outer_it][phase]['backward'] = {}
 
-        for i in range(1, opt.max_num_intervals//2**(self.starting_outer_it-1)+1):
-            self.losses['outer_it_%d' % self.starting_outer_it]['forward'][str(i)] = getattr(self.z_f, 'outer_it_%d_forward_loss_%d' % (self.starting_outer_it, i)).tolist()
-            self.losses['outer_it_%d' % self.starting_outer_it]['backward'][str(i)] = getattr(self.z_f, 'outer_it_%d_backward_loss_%d' % (self.starting_outer_it, i)).tolist()
+            for i in range(1, opt.max_num_intervals//2**(self.starting_outer_it-1)+1):
+                self.losses['outer_it_%d' % self.starting_outer_it][phase]['forward'][str(i)] = getattr(self.z_f, 'outer_it_%d_%s_forward_loss_%d' % (self.starting_outer_it, phase, i)).tolist()
+                self.losses['outer_it_%d' % self.starting_outer_it][phase]['backward'][str(i)] = getattr(self.z_f, 'outer_it_%d_%s_backward_loss_%d' % (self.starting_outer_it, phase, i)).tolist()
 
         if opt.log_tb: # tensorboard related things
             self.it_f = 0
@@ -171,19 +172,18 @@ class MultiStageRunner():
             log_dir = os.path.join(opt.experiment_path, 'logs')
             self.writer=SummaryWriter(log_dir=log_dir)
 
-    def setup_intermediate_distributions(self, opt, log_SNR_max, log_SNR_min, num_intervals):
+    def setup_intermediate_distributions(self, opt, log_SNR_max, log_SNR_min, num_intervals, phase='train'):
         #return {interval_number:[p,q]}
         snr_vals = np.logspace(log_SNR_max, log_SNR_min, num=num_intervals+1, base=np.exp(1))
-        #print(snr_vals)
         times = torch.linspace(opt.t0, opt.T, num_intervals+1)
 
         intermediate_distributions = {}
         for i in range(num_intervals):
             if i < num_intervals - 1:
-                p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i])
-                q = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i+1])
+                p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i], phase)
+                q = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i+1], phase)
             elif i == num_intervals - 1:
-                p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i])
+                p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i], phase)
                 q = data.build_prior_sampler(opt, opt.samp_bs)
                 
             p.time = times[i]
@@ -247,16 +247,12 @@ class MultiStageRunner():
 
             loss = self.compute_interval_val_loss(opt, 'backward', interval_dyn, ts)
             backward_loss[str(interval_key+1)] = loss
-        
-        average_forward_loss = sum([forward_loss[key] for key in forward_loss.keys()])/len(forward_loss.keys())
-        average_backward_loss = sum([backward_loss[key] for key in backward_loss.keys()])/len(backward_loss.keys())
-        monitor_loss = (average_forward_loss + average_backward_loss)/2
 
         #validation end
         activate_policy(self.z_f)
         activate_policy(self.z_b)
 
-        return monitor_loss
+        return {'forward_loss':forward_loss, 'backward_loss':backward_loss}
 
     def compute_interval_val_loss(self, opt, direction, dyn, ts):
         policy_opt, policy_impt = {
@@ -266,22 +262,29 @@ class MultiStageRunner():
 
         batch_x = opt.samp_bs
         batch_t = ts.size(0)
-        xs, zs_impt, ts_ = self.sample_train_data(opt, policy_impt, dyn, ts)
-        xs=util.flatten_dim01(xs)
-        zs_impt=util.flatten_dim01(zs_impt)
-        ts_=ts_.repeat(batch_x)
-        assert xs.shape[0] == ts_.shape[0]
-        assert zs_impt.shape[0] == ts_.shape[0]
 
-        xs=xs.to(opt.device)
-        zs_impt=zs_impt.to(opt.device)
+        losses = []
+        for _ in range(dyn.num_sample // dyn.batch_size): #number of batches in the validation dataset.
+            xs, zs_impt, ts_ = self.sample_train_data(opt, policy_impt, dyn, ts)
+            xs = util.flatten_dim01(xs)
+            zs_impt = util.flatten_dim01(zs_impt)
+            ts_ = ts_.repeat(batch_x)
+        
+            assert xs.shape[0] == ts_.shape[0]
+            assert zs_impt.shape[0] == ts_.shape[0]
 
-        loss, zs = compute_sb_nll_alternate_train(
-                opt, dyn, ts_, xs, zs_impt, policy_opt, return_z=True
-            )
+            xs = xs.to(opt.device)
+            zs_impt = zs_impt.to(opt.device)
 
-        assert not torch.isnan(loss)
-        return loss
+            loss, zs = compute_sb_nll_alternate_train(
+                    opt, dyn, ts_, xs, zs_impt, policy_opt, return_z=True
+                )
+
+            assert not torch.isnan(loss)
+            losses.append(loss)
+        
+        #return the mean validation loss in that interval
+        return torch.mean(losses)
 
     def alternating_policy_update(self, opt, direction, dyn, ts, tr_steps=1):
         policy_opt, policy_impt = {
@@ -346,11 +349,11 @@ class MultiStageRunner():
     def sb_outer_alternating_iteration(self, opt,
                                             optimizer_f, optimizer_b, 
                                             sched_f, sched_b, 
-                                            inter_pq_s, discretisation, 
+                                            inter_pq_s, val_inter_pq_s, discretisation, 
                                             tr_steps, outer_it):
 
         start_inner_it = self.starting_inner_it
-        early_stopper = MultistageEarlyStoppingCallback(patience=opt.stopping_patience, loss_values=self.losses['outer_it_%d' % outer_it])
+        early_stopper = MultistageEarlyStoppingCallback(patience=opt.stopping_patience, loss_values=self.losses['outer_it_%d' % outer_it]['val'])
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
             stop = early_stopper()
             if stop:
@@ -359,9 +362,6 @@ class MultiStageRunner():
             status = early_stopper.get_stages_status()
             probs = self.convergence_status_to_probs(status)
             intervals = list(probs.keys())
-
-            if inner_it % 1000 == 0:
-                print(probs)
                 
             weights = [probs[key] for key in intervals]
             interval_key = random.choices(intervals, weights=weights, k=1)[0]
@@ -377,11 +377,11 @@ class MultiStageRunner():
 
             losses = self.alternating_policy_update(opt, 'forward', interval_dyn, ts, tr_steps=tr_steps)
             f_loss = torch.mean(torch.tensor(losses)).item()
-            self.losses['outer_it_%d' % outer_it]['forward'][str(interval_key+1)].append(f_loss)
+            self.losses['outer_it_%d' % outer_it]['train']['forward'][str(interval_key+1)].append(f_loss)
 
             losses = self.alternating_policy_update(opt, 'backward', interval_dyn, ts, tr_steps=tr_steps)
             b_loss = torch.mean(torch.tensor(losses)).item()
-            self.losses['outer_it_%d' % outer_it]['backward'][str(interval_key+1)].append(b_loss)
+            self.losses['outer_it_%d' % outer_it]['train']['backward'][str(interval_key+1)].append(b_loss)
 
             if inner_it % opt.inner_it_save_freq == 0 and inner_it !=0:
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
@@ -408,22 +408,28 @@ class MultiStageRunner():
             
             self.global_step += 1
 
-            self.writer.add_scalar('outer_it_%d_forward_loss_%d' % (outer_it, (interval_key+1)), f_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['forward'][str(interval_key+1)]))
-            self.writer.add_scalar('outer_it_%d_backward_loss_%d' % (outer_it, (interval_key+1)), b_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['backward'][str(interval_key+1)]))
-
-            early_stopper.add_stage_value(f_loss, 'forward', str(interval_key+1))
-            early_stopper.add_stage_value(b_loss, 'backward', str(interval_key+1))
-
-            if inner_it % 100 == 50:
-                self.writer.flush()
+            self.writer.add_scalar('outer_it_%d_train_forward_loss_%d' % (outer_it, (interval_key+1)), f_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['train']['forward'][str(interval_key+1)]))
+            self.writer.add_scalar('outer_it_%d_train_backward_loss_%d' % (outer_it, (interval_key+1)), b_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['train']['backward'][str(interval_key+1)]))
 
             self.z_f.starting_inner_it = torch.tensor(inner_it)
             self.starting_inner_it = inner_it
             self.z_f.global_step = torch.tensor(self.global_step)
+            self.z_f.register_buffer('outer_it_%d_train_forward_loss_%d' % (outer_it, (interval_key+1)), torch.tensor(self.losses['outer_it_%d' % outer_it]['train']['forward'][str(interval_key+1)]))
+            self.z_f.register_buffer('outer_it_%d_train_backward_loss_%d' % (outer_it, (interval_key+1)), torch.tensor(self.losses['outer_it_%d' % outer_it]['train']['backward'][str(interval_key+1)]))
             
-            self.z_f.register_buffer('outer_it_%d_forward_loss_%d' % (outer_it, (interval_key+1)), torch.tensor(self.losses['outer_it_%d' % outer_it]['forward'][str(interval_key+1)]))
-            self.z_f.register_buffer('outer_it_%d_backward_loss_%d' % (outer_it, (interval_key+1)), torch.tensor(self.losses['outer_it_%d' % outer_it]['backward'][str(interval_key+1)]))
-
+            if inner_it % opt.val_freq == 0:
+                val_loss = self.compute_val_loss(opt, val_inter_pq_s, discretisation)
+                val_forward_loss = val_loss['forward_loss']
+                val_backward_loss = val_loss['backward_loss']
+                
+                for interval_key in val_inter_pq_s.keys():
+                    str_key = str(interval_key+1)
+                    self.writer.add_scalar('outer_it_%d_val_forward_loss_%s' % (outer_it, str_key), val_forward_loss[str_key], global_step=len(self.losses['outer_it_%d' % outer_it]['val']['forward'][str_key]))
+                    self.writer.add_scalar('outer_it_%d_val_backward_loss_%s' % (outer_it, str_key), val_backward_loss[str_key], global_step=len(self.losses['outer_it_%d' % outer_it]['val']['backward'][str_key]))
+                    self.z_f.register_buffer('outer_it_%d_val_forward_loss_%s' % (outer_it, str_key), torch.tensor(self.losses['outer_it_%d' % outer_it]['val']['forward'][str_key]))
+                    self.z_f.register_buffer('outer_it_%d_val_backward_loss_%s' % (outer_it, str_key), torch.tensor(self.losses['outer_it_%d' % outer_it]['val']['backward'][str_key]))
+                    early_stopper.add_stage_value(val_forward_loss[str_key], 'forward', str_key)
+                    early_stopper.add_stage_value(val_backward_loss[str_key], 'backward', str_key)
         
         #reset after the end of the outer iteration.
         self.starting_inner_it = 1
@@ -442,21 +448,27 @@ class MultiStageRunner():
         tr_steps=opt.policy_updates
         for outer_it in range(self.starting_outer_it, outer_iterations+1):
             inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
+            val_inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals, phase='val')
             new_discretisation = self.compute_discretisation(opt, outer_it)
             
             #initialise the losses for the next outer iteration
-            self.losses['outer_it_%d' % outer_it]={}
-            self.losses['outer_it_%d' % outer_it]['forward']={}
-            self.losses['outer_it_%d' % outer_it]['backward']={}
-            for i in range(1, opt.max_num_intervals//2**(outer_it-1)+1):
-                self.losses['outer_it_%d' % outer_it]['forward'][str(i)] = []
-                self.losses['outer_it_%d' % outer_it]['backward'][str(i)] = []
+            #self.starting_outer_it has been initialised in the init method
+            if outer_it >= self.starting_outer_it+1:
+                self.losses['outer_it_%d' % outer_it]={}
+                for phase in ['train', 'val']:
+                    self.losses['outer_it_%d' % outer_it][phase]={}
+                    self.losses['outer_it_%d' % outer_it][phase]['forward']={}
+                    self.losses['outer_it_%d' % outer_it][phase]['backward']={}
+                    for i in range(1, opt.max_num_intervals//2**(outer_it-1)+1):
+                        self.losses['outer_it_%d' % outer_it][phase]['forward'][str(i)] = []
+                        self.losses['outer_it_%d' % outer_it][phase]['backward'][str(i)] = []
 
             self.sb_outer_alternating_iteration(opt,
                                             optimizer_f, optimizer_b, 
                                             sched_f, sched_b, 
-                                            inter_pq_s, new_discretisation, 
+                                            inter_pq_s, val_inter_pq_s, new_discretisation, 
                                             tr_steps, outer_it)
+
             num_intervals = num_intervals // 2
 
             self.z_f.starting_outer_it += 1

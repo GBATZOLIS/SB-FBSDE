@@ -42,7 +42,7 @@ def build_prior_sampler(opt, batch_size):
     prior = td.MultivariateNormal(torch.zeros(opt.data_dim), cov_coef*torch.eye(opt.data_dim[-1]))
     return PriorSampler(prior, batch_size, opt.device)
 
-def build_data_sampler(opt, batch_size):
+def build_data_sampler(opt, batch_size, phase):
     if util.is_toy_dataset(opt):
         return {
             'gmm': MixMultiVariateNormal,
@@ -57,13 +57,13 @@ def build_data_sampler(opt, batch_size):
             'celebA64':   generate_celebA_dataset,
             'cifar10':    generate_cifar10_dataset,
         }.get(opt.problem_name)
-        dataset = dataset_generator(opt)
+        dataset = dataset_generator(opt, phase=phase)
         return DataSampler(dataset, batch_size, opt.device)
 
     else:
         raise RuntimeError()
 
-def build_perturbed_data_sampler(opt, batch_size, snr):
+def build_perturbed_data_sampler(opt, batch_size, snr, phase):
     if util.is_toy_dataset(opt):
         return {
             'gmm': PerturbedMixMultiVariateNormal,
@@ -78,7 +78,7 @@ def build_perturbed_data_sampler(opt, batch_size, snr):
             'celebA64':   generate_celebA_dataset,
             'cifar10':    generate_cifar10_dataset,
         }.get(opt.problem_name)
-        dataset = dataset_generator(opt)
+        dataset = dataset_generator(opt, phase=phase)
         return PerturbedDataSampler(opt, snr, dataset, batch_size, opt.device)
 
     else:
@@ -119,12 +119,6 @@ class MixMultiVariateNormal:
         samples=torch.cat(samples,dim=0)
         return samples
 
-'''
-def get_perturber_fn()
-    def perturb_fn(data_class):
-        class perturbed_data_class(data_class):
-            def __init__(self, snr, batch_size, radius=12, num=8, sigmas=None):
-'''
 
 class PerturbedMixMultiVariateNormal(MixMultiVariateNormal):
     def __init__(self, opt):
@@ -171,15 +165,6 @@ class PerturbedCheckerBoard(CheckerBoard):
         self.log_snr_max = opt.log_SNR_max
         self.log_snr_min = opt.log_SNR_min
         self.prior_std = opt.prior_std
-
-    '''
-    def sample(self):
-        not_perturbed_sample = super().sample()
-        alpha = torch.sqrt(self.snr/(1+self.snr))
-        sigma = 1/torch.sqrt(1+self.snr)
-        perturbed_sample = alpha * not_perturbed_sample + sigma * torch.randn_like(not_perturbed_sample)
-        return perturbed_sample
-    '''
 
     def sample(self):
         not_perturbed_sample = super().sample()
@@ -296,15 +281,6 @@ class PerturbedDataSampler(DataSampler): #perturbed dump data sampler
         self.log_snr_max = opt.log_SNR_max
         self.log_snr_min = opt.log_SNR_min
         self.prior_std = opt.prior_std
-    
-    '''
-    def sample(self):
-        not_perturbed_sample = super().sample()
-        alpha = torch.sqrt(self.snr/(1+self.snr))
-        sigma = 1/torch.sqrt(1+self.snr)
-        perturbed_sample = alpha * not_perturbed_sample + sigma * torch.rand_like(not_perturbed_sample)
-        return perturbed_sample
-    '''
 
     def sample(self):
         not_perturbed_sample = super().sample()
@@ -377,7 +353,7 @@ class DataLoaderX(DataLoader):
     def __iter__(self):
         return BackgroundGenerator(super().__iter__())
 
-def generate_celebA_dataset(opt,load_train=True):
+def generate_celebA_dataset(opt,load_train=True, phase='train'):
     if opt.problem_name=='celebA32': #Our own data preprocessing
         transforms_list=[
             transforms.Resize(32),
@@ -402,7 +378,7 @@ def generate_celebA_dataset(opt,load_train=True):
         transform=transforms.Compose(transforms_list)
     )
 
-def generate_mnist_dataset(opt,load_train=True):
+def generate_mnist_dataset(opt,load_train=True, phase='train'):
     transforms_list=[
         transforms.Pad(2,fill=0), #left and right 2+2=4 padding
         transforms.ToTensor(),
@@ -412,12 +388,12 @@ def generate_mnist_dataset(opt,load_train=True):
 
     return datasets.MNIST(
         'data',
-        train= not opt.compute_NLL,
+        train = True if phase == 'train' else False,
         download=load_train,
         transform=transforms.Compose(transforms_list)
     )
 
-def generate_cifar10_dataset(opt,load_train=True):
+def generate_cifar10_dataset(opt, load_train=True, phase='train'):
     transforms_list=[
         transforms.Resize(32),
         transforms.RandomHorizontalFlip(p=0.5),
@@ -428,7 +404,7 @@ def generate_cifar10_dataset(opt,load_train=True):
 
     return datasets.CIFAR10(
         'data',
-        train= not opt.compute_NLL,
+        train = True if phase == 'train' else False,
         download=load_train,
         transform=transforms.Compose(transforms_list)
     )
