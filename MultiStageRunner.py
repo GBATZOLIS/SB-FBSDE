@@ -373,7 +373,7 @@ class MultiStageRunner():
                 break
             
             status = early_stopper.get_stages_status()
-            probs = self.convergence_status_to_probs(status)
+            probs = self.convergence_status_to_probs(status, opt.reweighting_factor)
             intervals = list(probs.keys())
                 
             weights = [probs[key] for key in intervals]
