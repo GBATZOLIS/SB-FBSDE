@@ -266,7 +266,11 @@ class MultiStageRunner():
 
         losses = []
         
-        val_batches = int(opt.val_dataset_size * dyn.p.num_sample / dyn.p.batch_size)
+        if hasattr(dyn.p, 'num_sample'):
+            val_batches = int(opt.val_dataset_size * dyn.p.num_sample / dyn.p.batch_size)
+        else:
+            val_batches = opt.val_batches
+            
         for _ in tqdm(range(val_batches)): #number of batches in the validation dataset.
             xs, zs_impt, ts_ = self.sample_train_data(opt, policy_impt, dyn, ts)
             xs.requires_grad_(True)
@@ -343,7 +347,6 @@ class MultiStageRunner():
 
         return losses
 
-    
     def convergence_status_to_probs(self, status, k=2):
         n = len(status.keys())
         s = sum([status[key] for key in status.keys()])

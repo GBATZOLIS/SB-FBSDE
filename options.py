@@ -54,7 +54,7 @@ def set():
     parser.add_argument('--sampling-freq', type=int, default=500, help='Sampling frequency while training.')
     parser.add_argument('--val-freq', type=int, default=1000, help='Number of training iteration before every validation step')
     parser.add_argument('--val-dataset-size', type=float, default=0.05, help='Percentage of the validation dataset to be used in training.')
-
+    parser.add_argument('--val-batches', type=int, default=20, help='Number of validation batches in the case of toy datasets.')
     
     # --------------- SB training & sampling (corrector) ---------------
     parser.add_argument("--training-scheme", type=str, default='standard', help='training schem. Options=[standard, divideNconquer]')
