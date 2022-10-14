@@ -147,15 +147,20 @@ class MultiStageRunner():
         self.last_level = True if self.level == self.reduction_levels else False
 
         snr_vals = np.logspace(self.log_SNR_max, self.log_SNR_min, num=self.reduction_levels+1, base=np.exp(1))
-        self.level_log_SNR_max = snr_vals[self.level-1]
-        self.level_log_SNR_min = snr_vals[self.level]
+        self.level_log_SNR_max = np.log(snr_vals[self.level-1])
+        self.level_log_SNR_min = np.log(snr_vals[self.level])
+
+        print('max SNR: %.3f - min SNR: %.3f' % (self.level_log_SNR_max, self.level_log_SNR_min))
 
         times = torch.linspace(opt.t0, opt.T, self.reduction_levels+1)
         self.level_min_time = times[self.level-1]
         self.level_max_time = times[self.level]
+        print('min time: %.3f - max time: %.3f' % (self.level_min_time, self.level_max_time))
 
         self.max_num_intervals = opt.max_num_intervals // opt.reduction_levels
+        print('Max number of intervals: %d' % self.max_num_intervals)
         self.num_outer_iterations = int(np.log2(self.max_num_intervals))+1
+        print('Number of outer iterations: %d' % self.num_outer_iterations)
 
         # build boundary distribution (p: target, q: prior)
         self.p, self.q = data.build_boundary_distribution(opt)
@@ -193,7 +198,7 @@ class MultiStageRunner():
             self.it_f = 0
             self.it_b = 0
 
-            log_dir = os.path.join(opt.experiment_path, 'logs')
+            log_dir = os.path.join(opt.experiment_path,  'reduction_%d' % opt.reduction_levels, '%d' % opt.level_id, 'logs')
             self.writer = SummaryWriter(log_dir=log_dir)
 
 
@@ -621,7 +626,8 @@ class MultiStageRunner():
             
             if i==0 and initial_sample is None:
                 if not self.last_level:
-                    initial_sample = inter_pq_s[-1][-1].sample()
+                    max_level = max(inter_pq_s.keys())
+                    initial_sample = inter_pq_s[max_level][1].sample().to(opt.device)
             
             _, _, initial_sample = interval_dyn.sample_traj(ts, self.z_b,
                                                             save_traj=False,

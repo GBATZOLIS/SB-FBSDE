@@ -163,7 +163,7 @@ def set():
 
     #opt.eval_path = os.path.join(os.multistage_phase_path, 'eval')
     #os.makedirs(opt.eval_path, exist_ok=True)
-
+    '''
     if opt.snapshot_freq:
         os.makedirs(os.path.join(opt.eval_path, 'forward'), exist_ok=True)
         os.makedirs(os.path.join(opt.eval_path, 'backward'), exist_ok=True)
@@ -173,6 +173,7 @@ def set():
             opt.eval_path, 'backward', 'generated_data'
         )
         os.makedirs(opt.generated_data_path, exist_ok=True)
+    '''
     # util.check_duplication(opt)
 
     # ========= auto assert & (kind) warning =========
