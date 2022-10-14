@@ -57,6 +57,9 @@ def set():
     parser.add_argument('--val-batches', type=int, default=20, help='Number of validation batches in the case of toy datasets.')
     parser.add_argument('--reweighting-factor', type=int, default=1, help='Reweighting factor. Default=1, i.e. no reweighting.')
 
+    #new
+    parser.add_argument('--reduction-levels', type=int, default=8, help='The number of reduction intervals. This depends on the number of available computational units (gpus).')
+    parser.add_argument('--level-id', type=int, default=1, help='ID of the interval to be either reduced or taught based on the phase of the multistage algorithm.')
     
     # --------------- SB training & sampling (corrector) ---------------
     parser.add_argument("--training-scheme", type=str, default='standard', help='training schem. Options=[standard, divideNconquer]')
@@ -151,12 +154,15 @@ def set():
 
     config_path = '%s_%d_%d_%d_%.2f_%d_%d' % (opt.discretisation_policy, opt.num_inner_iterations, opt.policy_updates, opt.base_discretisation, opt.var, opt.prior_std, opt.reweighting_factor)
     opt.experiment_path = os.path.join(opt.experiment_problem_path, config_path)
+    os.makedirs(opt.experiment_path, exist_ok=True)
+    
+    os.multistage_phase_path = os.path.join(opt.experiment_path, 'reduction_%d' % opt.reduction_levels, '%d' % opt.level_id)
 
-    opt.ckpt_path = os.path.join(opt.experiment_path, 'checkpoints')
+    opt.ckpt_path = os.path.join(os.multistage_phase_path, 'checkpoints')
     os.makedirs(opt.ckpt_path, exist_ok=True)
 
-    opt.eval_path = os.path.join(opt.experiment_path, 'eval')
-    os.makedirs(opt.eval_path, exist_ok=True)
+    #opt.eval_path = os.path.join(os.multistage_phase_path, 'eval')
+    #os.makedirs(opt.eval_path, exist_ok=True)
 
     if opt.snapshot_freq:
         os.makedirs(os.path.join(opt.eval_path, 'forward'), exist_ok=True)

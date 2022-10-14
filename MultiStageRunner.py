@@ -125,18 +125,37 @@ class MultistageEarlyStoppingCallback():
                 status[stage] = 0
         return status
 
+#create a new class that inherits the class of all models in reduced level j and can perform sampling.
+
+#instruction to myself: Modify this class so that it does the training and the sampling of the reduced unit i which is found in the reduced level j.
+#we need to calculate the maximum and minimum SNRs of reduced unit i. We need to understand if it is the last unit 
+#(in this case the last distribution is the prior and we need to modify the sample generating method)
 class MultiStageRunner():
     def __init__(self, opt):
-        super(MultiStageRunner,self).__init__()
+        super(MultiStageRunner, self).__init__()
         self.start_time = time.time()
 
         #multistage settings
+        #original SBP problem settings
         self.log_SNR_max = opt.log_SNR_max
         self.log_SNR_min = opt.log_SNR_min
-        
-        self.num_outer_iterations = opt.num_outer_iterations
-        self.max_num_intervals = opt.max_num_intervals
         self.base_discretisation = opt.base_discretisation
+
+        #level settings
+        self.level = opt.level_id #1,2,...,N
+        self.reduction_levels = opt.reduction_levels #N
+        self.last_level = True if self.level == self.reduction_levels else False
+
+        snr_vals = np.logspace(self.log_SNR_max, self.log_SNR_min, num=self.reduction_levels+1, base=np.exp(1))
+        self.level_log_SNR_max = snr_vals[self.level-1]
+        self.level_log_SNR_min = snr_vals[self.level]
+
+        times = torch.linspace(opt.t0, opt.T, self.reduction_levels+1)
+        self.level_min_time = times[self.level-1]
+        self.level_max_time = times[self.level]
+
+        self.max_num_intervals = opt.max_num_intervals // opt.reduction_levels
+        self.num_outer_iterations = int(np.log2(self.max_num_intervals))+1
 
         # build boundary distribution (p: target, q: prior)
         self.p, self.q = data.build_boundary_distribution(opt)
@@ -149,12 +168,16 @@ class MultiStageRunner():
 
         if opt.load:
             util.restore_checkpoint(opt, self, opt.load)
+
+            if self.reduction_levels < self.z_f.reduction_levels.item():
+                #in this case we enter a new reduction cycle
+                #we need to initialize the logs
+                self.z_f.initialize_logs(self.max_num_intervals, self.reduction_levels)
         
         self.starting_outer_it = self.z_f.starting_outer_it.item()
         self.starting_inner_it = self.z_f.starting_inner_it.item()
         self.global_step = self.z_f.global_step.item()
 
-        
         self.losses = {}
         self.losses['outer_it_%d' % self.starting_outer_it] = {}
         for phase in ['train', 'val']:
@@ -162,7 +185,7 @@ class MultiStageRunner():
             self.losses['outer_it_%d' % self.starting_outer_it][phase]['forward'] = {}
             self.losses['outer_it_%d' % self.starting_outer_it][phase]['backward'] = {}
 
-            for i in range(1, opt.max_num_intervals//2**(self.starting_outer_it-1)+1):
+            for i in range(1, self.max_num_intervals//2**(self.starting_outer_it-1)+1):
                 self.losses['outer_it_%d' % self.starting_outer_it][phase]['forward'][str(i)] = getattr(self.z_f, 'outer_it_%d_%s_forward_loss_%d' % (self.starting_outer_it, phase, i)).tolist()
                 self.losses['outer_it_%d' % self.starting_outer_it][phase]['backward'][str(i)] = getattr(self.z_f, 'outer_it_%d_%s_backward_loss_%d' % (self.starting_outer_it, phase, i)).tolist()
 
@@ -171,21 +194,29 @@ class MultiStageRunner():
             self.it_b = 0
 
             log_dir = os.path.join(opt.experiment_path, 'logs')
-            self.writer=SummaryWriter(log_dir=log_dir)
+            self.writer = SummaryWriter(log_dir=log_dir)
 
-    def setup_intermediate_distributions(self, opt, log_SNR_max, log_SNR_min, num_intervals, phase='train'):
+
+    #done
+    def setup_intermediate_distributions(self, opt, log_SNR_max, log_SNR_min, 
+                                                    min_time, max_time, 
+                                                    num_intervals, phase='train'):
         #return {interval_number:[p,q]}
         snr_vals = np.logspace(log_SNR_max, log_SNR_min, num=num_intervals+1, base=np.exp(1))
-        times = torch.linspace(opt.t0, opt.T, num_intervals+1)
+        times = torch.linspace(min_time, max_time, num_intervals+1)
 
         intermediate_distributions = {}
         for i in range(num_intervals):
-            if i < num_intervals - 1:
+            if self.last_level:
+                if i < num_intervals - 1:
+                    p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i], phase)
+                    q = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i+1], phase)
+                elif i == num_intervals - 1:
+                    p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i], phase)
+                    q = data.build_prior_sampler(opt, opt.samp_bs)
+            else:
                 p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i], phase)
                 q = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i+1], phase)
-            elif i == num_intervals - 1:
-                p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i], phase)
-                q = data.build_prior_sampler(opt, opt.samp_bs)
                 
             p.time = times[i]
             q.time = times[i+1]
@@ -295,7 +326,8 @@ class MultiStageRunner():
             
             losses.append(loss.item()) #important -> loss.item() 
 
-            '''All loss tensors which are saved outside of the optimization cycle (i.e. outside the for g_iter in range(generator_iters) loop) need to be detached from the graph. Otherwise, you are keeping all previous computation graphs in memory.'''
+            '''All loss tensors which are saved outside of the optimization cycle (i.e. outside the for g_iter in range(generator_iters) loop) 
+            need to be detached from the graph. Otherwise, you are keeping all previous computation graphs in memory.'''
         
         #return the mean validation loss in that interval
         return np.mean(losses)
@@ -457,12 +489,14 @@ class MultiStageRunner():
         optimizer_f, _, sched_f = self.get_optimizer_ema_sched(policy_f)
         optimizer_b, _, sched_b = self.get_optimizer_ema_sched(policy_b)
         
-        outer_iterations = self.num_outer_iterations
-        num_intervals = self.max_num_intervals
-        tr_steps=opt.policy_updates
+        outer_iterations = self.num_outer_iterations 
+        num_intervals = self.max_num_intervals 
+        tr_steps = opt.policy_updates
         for outer_it in range(self.starting_outer_it, outer_iterations+1):
-            inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
-            val_inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals, phase='val')
+            inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
+                                                                    self.level_min_time, self.level_max_time, num_intervals)
+            val_inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
+                                                                    self.level_min_time, self.level_max_time, num_intervals, phase='val')
             new_discretisation = self.compute_discretisation(opt, outer_it)
             
             #initialise the losses for the next outer iteration
@@ -575,7 +609,7 @@ class MultiStageRunner():
         plt.clf()
 
     @torch.no_grad()
-    def multi_sb_generate_sample(self, opt, inter_pq_s, discretisation):
+    def multi_sb_generate_sample(self, opt, inter_pq_s, discretisation, initial_sample=None):
         sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
         for i, key in tqdm(enumerate(sorted_keys)):
             p, q = inter_pq_s[key]
@@ -585,13 +619,14 @@ class MultiStageRunner():
             interval_dyn.dt = new_dt
             ts = ts.to(opt.device)
             
-            if i==0:
-                initial_sample=None
+            if i==0 and initial_sample is None:
+                if not self.last_level:
+                    initial_sample = inter_pq_s[-1][-1].sample()
             
             _, _, initial_sample = interval_dyn.sample_traj(ts, self.z_b,
                                                             save_traj=False,
                                                             initial_sample=initial_sample)
-        sample = initial_sample
+
         return initial_sample
 
 
@@ -670,7 +705,8 @@ class MultiStageRunner():
         outer_it = self.z_f.starting_outer_it.item()
         max_num_intervals = opt.max_num_intervals
         num_intervals = max_num_intervals // 2**(outer_it-1)
-        inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
+        inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
+                                                                self.level_min_time, self.level_max_time, num_intervals)
 
         sorted_keys = sorted(list(inter_pq_s.keys()))
         
@@ -711,13 +747,15 @@ class MultiStageRunner():
             
         return {'trajectory': xs, 'sample':x.detach().cpu()}
 
+    #this method needs to be modified
     @torch.no_grad()
     def sample(self, opt, discretisation, save_traj=True, stochastic=True):
         #1.) detect number of SBP stages
         outer_it = self.z_f.starting_outer_it.item()
         max_num_intervals = opt.max_num_intervals
         num_intervals = max_num_intervals // 2**(outer_it-1)
-        inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
+        inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
+                                                                self.level_min_time, self.level_max_time, num_intervals)
 
         sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
         
@@ -757,174 +795,6 @@ class MultiStageRunner():
                     xs[:,i*discretisation+idx+1,::] = x.detach().cpu()
             
         return {'trajectory': xs, 'sample':x.detach().cpu()}
-
-    def sanity_check(self, opt, sanity_check_type = 'marginals'):
-        if sanity_check_type == 'marginals':
-            #we check whether the marginal distributions are the correct ones.
-            num_intervals=4
-            intermediate_distributions = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
-            
-            p_samples, q_samples = [], []
-            for i in range(num_intervals):
-                p, q = intermediate_distributions[i]
-                p_sample = p.sample().to('cpu')
-                p_samples.append(p_sample)
-                q_sample = q.sample().to('cpu')
-                q_samples.append(q_sample)
-            
-            p_samples = torch.stack(p_samples)
-            q_samples = torch.stack(q_samples)
-            stack_samples = torch.stack([p_samples, q_samples])
-            fn = 'sanity-check-perturbation'
-            
-            save_dir = os.path.join(opt.experiment_path, 'debug')
-            os.makedirs(save_dir, exist_ok=True)
-
-            self.group_scatter_plot(stack_samples, opt.problem_name, fn, save_dir)
-
-    def sb_joint_train(self, opt):
-        assert not util.is_image_dataset(opt)
-        policy_f, policy_b = self.z_f, self.z_b
-        policy_f = activate_policy(policy_f)
-        policy_b = activate_policy(policy_b)
-        optimizer_f, _, sched_f = self.get_optimizer_ema_sched(policy_f)
-        optimizer_b, _, sched_b = self.get_optimizer_ema_sched(policy_b)
-
-        outer_iterations = self.num_outer_iterations
-        num_intervals = self.max_num_intervals
-        for out_it in range(outer_iterations):
-            inter_pq_s = self.setup_intermediate_distributions(opt, self.log_SNR_max, self.log_SNR_min, num_intervals)
-            self.sb_outer_joint_iteration(opt, policy_f, policy_b, 
-                                               optimizer_f, optimizer_b, 
-                                               sched_f, sched_b,
-                                               inter_pq_s, self.base_discretisation * 2 ** out_it)
-            num_intervals = num_intervals // 2
-
-            #marks the end of the outer iteration. We should have a solution of the intermediate num_intervals SBPs.
-            #when num_intervals=1, we should have the solution of the target SBP problem.
-
-
-    def sb_outer_joint_iteration(self, opt, 
-                                       policy_f, policy_b, 
-                                       optimizer_f, optimizer_b, 
-                                       sched_f, sched_b,
-                                       inter_pq_s, discretisation):
-
-        num_intervals = len(inter_pq_s.keys())
-
-        batch_x = opt.samp_bs
-        for it in range(opt.num_itr):
-
-            optimizer_f.zero_grad()
-            optimizer_b.zero_grad()
-
-            interval_key = random.choice(list(inter_pq_s.keys()))
-            p, q = inter_pq_s[interval_key]
-
-            interval_dyn = sde.build(opt, p, q)
-            ts = torch.linspace(p.time, q.time, discretisation)
-            new_dt = ts[1]-ts[0]
-            interval_dyn.dt = new_dt
-
-            xs_f, zs_f, x_term_f = interval_dyn.sample_traj(ts, policy_f, save_traj=True)
-            xs_f = util.flatten_dim01(xs_f)
-            zs_f = util.flatten_dim01(zs_f)
-            _ts = ts.repeat(batch_x)
-
-            loss = compute_sb_nll_joint_train(
-                opt, batch_x, interval_dyn, _ts, xs_f, zs_f, x_term_f, policy_b
-            )
-            loss.backward()
-
-            optimizer_f.step()
-            optimizer_b.step()
-
-            if sched_f is not None: sched_f.step()
-            if sched_b is not None: sched_b.step()
-
-            self.log_sb_joint_train(opt, it, loss, optimizer_f, opt.num_itr)
-
-            # evaluate
-            if (it+1) % opt.eval_itr==0:
-                with torch.no_grad():
-                    xs_b, _, _ = self.dyn.sample_traj(ts, policy_b, save_traj=True)
-                util.save_toy_npy_traj(opt, 'train_it{}'.format(it+1), xs_b.detach().cpu().numpy())
-
-    def log_sb_joint_train(self, opt, it, loss, optimizer, num_itr):
-        self._print_train_itr(it, loss, optimizer, num_itr, name='SB joint')
-        if opt.log_tb:
-            step = self.update_count('backward')
-            self.log_tb(step, loss.detach(), 'loss', 'SB_joint')
-
-    def log_multistage_sb_alternate_train(self, opt, outer_it, inner_it, direction, losses):
-        time_elapsed = util.get_time(time.time()-self.start_time)
-        avg_loss = torch.mean(torch.tensor(losses)).item()
-        update_steps = len(losses)
-
-        if inner_it % 500 == 0:
-            print("direction:[{0}]| outer it:{1}/{2} | inner it:{3}/{4} | update steps: {5} | loss:{6} | time:{7} ".format(
-                util.magenta("SB {}".format(direction)),
-                util.cyan("{}".format(outer_it)),
-                util.cyan("{}".format(opt.num_outer_iterations)),
-                util.cyan("{}".format(inner_it)),
-                util.cyan("{}".format(opt.num_inner_iterations)),
-                util.green("{}".format(update_steps)),
-                util.red("{}".format(avg_loss)),
-                util.green("{0}:{1:02d}:{2:05.2f}".format(*time_elapsed))
-            ))
-        
-        if opt.log_tb:
-            step = self.update_count(direction)
-            self.log_tb(step, avg_loss, 'loss', 'SB_'+direction) # SB surrogate loss (see Eq 18 & 19 in the paper)
-
-
-    def log_sb_alternate_train(self, opt, it, ep, stage, loss, zs, zs_impt, optimizer, direction, num_epoch):
-        time_elapsed = util.get_time(time.time()-self.start_time)
-        lr = optimizer.param_groups[0]['lr']
-        print("[{0}] stage {1}/{2} | ep {3}/{4} | train_it {5}/{6} | lr:{7} | loss:{8} | time:{9}"
-            .format(
-                util.magenta("SB {}".format(direction)),
-                util.cyan("{}".format(1+stage)),
-                opt.num_stage,
-                util.cyan("{}".format(1+ep)),
-                num_epoch,
-                util.cyan("{}".format(1+it+opt.num_itr*ep)),
-                opt.num_itr*num_epoch,
-                util.yellow("{:.2e}".format(lr)),
-                util.red("{:+.4f}".format(loss.item())),
-                util.green("{0}:{1:02d}:{2:05.2f}".format(*time_elapsed)),
-        ))
-        if opt.log_tb:
-            step = self.update_count(direction)
-            neg_elbo = loss + util.compute_z_norm(zs_impt, self.dyn.dt)
-            self.log_tb(step, loss.detach(), 'loss', 'SB_'+direction) # SB surrogate loss (see Eq 18 & 19 in the paper)
-            self.log_tb(step, neg_elbo.detach(), 'neg_elbo', 'SB_'+direction) # negative ELBO (see Eq 16 in the paper)
-            # if direction == 'forward':
-            #     z_norm = util.compute_z_norm(zs, self.dyn.dt)
-            #     self.log_tb(step, z_norm.detach(), 'z_norm', 'SB_forward')
-
-    def _print_train_itr(self, it, loss, optimizer, num_itr, name):
-        time_elapsed = util.get_time(time.time()-self.start_time)
-        lr = optimizer.param_groups[0]['lr']
-        print("[{0}] train_it {1}/{2} | lr:{3} | loss:{4} | time:{5}"
-            .format(
-                util.magenta(name),
-                util.cyan("{}".format(1+it)),
-                num_itr,
-                util.yellow("{:.2e}".format(lr)),
-                util.red("{:.4f}".format(loss.item())),
-                util.green("{0}:{1:02d}:{2:05.2f}".format(*time_elapsed)),
-        ))
-    
-    def update_count(self, direction):
-        if direction == 'forward':
-            self.it_f += 1
-            return self.it_f
-        elif direction == 'backward':
-            self.it_b += 1
-            return self.it_b
-        else:
-            raise RuntimeError()
     
     def log_tb(self, step, val, name, tag):
         self.writer.add_scalar(os.path.join(tag,name), val, global_step=step)
