@@ -177,7 +177,12 @@ class MultiStageRunner():
             if self.reduction_levels < self.z_f.reduction_levels.item():
                 #in this case we enter a new reduction cycle
                 #we need to initialize the logs
+                print('New option reduction levels less than loaded reduction levels.')
+                print('We are entering a new reduction cycle.')
                 self.z_f.initialize_logs(self.max_num_intervals, self.reduction_levels)
+            else:
+                print('New option reduction levels same as the loaded reduction levels')
+                print('We are either resuming training or using the loaded model for sampling.')
         
         self.starting_outer_it = self.z_f.starting_outer_it.item()
         self.starting_inner_it = self.z_f.starting_inner_it.item()
@@ -323,7 +328,7 @@ class MultiStageRunner():
             loss, zs = compute_sb_nll_alternate_train(
                     opt, dyn, ts_, xs, zs_impt, policy_opt, return_z=True
                 )
-            print(loss)
+            
             assert not torch.isnan(loss)
             
             #mem = float(torch.cuda.memory_allocated() / (1024 * 1024))
@@ -360,7 +365,7 @@ class MultiStageRunner():
             xs=util.flatten_dim01(xs)
             zs_impt=util.flatten_dim01(zs_impt)
             ts_=ts_.repeat(batch_x)
-            #print(ts.shape)
+            
             assert xs.shape[0] == ts_.shape[0]
             assert zs_impt.shape[0] == ts_.shape[0]
 
@@ -468,7 +473,7 @@ class MultiStageRunner():
             self.z_f.register_buffer('outer_it_%d_train_backward_loss_%d' % (outer_it, (interval_key+1)), torch.tensor(self.losses['outer_it_%d' % outer_it]['train']['backward'][str(interval_key+1)]))
             
             if inner_it % opt.val_freq == 0:
-                print('Validation starts...')
+                #print('Validation starts...')
                 val_loss = self.compute_val_loss(opt, val_inter_pq_s, discretisation)
                 val_forward_loss = val_loss['forward_loss']
                 val_backward_loss = val_loss['backward_loss']
@@ -612,28 +617,6 @@ class MultiStageRunner():
         fig.tight_layout()
         plt.savefig(fn_pdf)
         plt.clf()
-
-    @torch.no_grad()
-    def multi_sb_generate_sample(self, opt, inter_pq_s, discretisation, initial_sample=None):
-        sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
-        for i, key in tqdm(enumerate(sorted_keys)):
-            p, q = inter_pq_s[key]
-            interval_dyn = sde.build(opt, p, q)
-            ts = torch.linspace(p.time, q.time, discretisation)
-            new_dt = ts[1]-ts[0]
-            interval_dyn.dt = new_dt
-            ts = ts.to(opt.device)
-            
-            if i==0 and initial_sample is None:
-                if not self.last_level:
-                    max_level = max(inter_pq_s.keys())
-                    initial_sample = inter_pq_s[max_level][1].sample().to(opt.device)
-            
-            _, _, initial_sample = interval_dyn.sample_traj(ts, self.z_b,
-                                                            save_traj=False,
-                                                            initial_sample=initial_sample)
-
-        return initial_sample
 
 
     def experimental_features(self, opt):
@@ -802,5 +785,27 @@ class MultiStageRunner():
             
         return {'trajectory': xs, 'sample':x.detach().cpu()}
     
+    @torch.no_grad()
+    def multi_sb_generate_sample(self, opt, inter_pq_s, discretisation, initial_sample=None):
+        sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
+        for i, key in tqdm(enumerate(sorted_keys)):
+            p, q = inter_pq_s[key]
+            interval_dyn = sde.build(opt, p, q)
+            ts = torch.linspace(p.time, q.time, discretisation)
+            new_dt = ts[1]-ts[0]
+            interval_dyn.dt = new_dt
+            ts = ts.to(opt.device)
+            
+            if i==0 and initial_sample is None:
+                if not self.last_level:
+                    max_level = max(inter_pq_s.keys())
+                    initial_sample = inter_pq_s[max_level][1].sample().to(opt.device)
+            
+            _, _, initial_sample = interval_dyn.sample_traj(ts, self.z_b,
+                                                            save_traj=False,
+                                                            initial_sample=initial_sample)
+
+        return initial_sample
+
     def log_tb(self, step, val, name, tag):
         self.writer.add_scalar(os.path.join(tag,name), val, global_step=step)
