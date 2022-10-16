@@ -132,7 +132,7 @@ class MultistageCombiner():
         self.opts = {}
         for i in range(1, opt.reduction_levels+1):
             opt.level_id = i
-            opt.load = getattr(opt, 'load_%d' % i)
+            opt.load = opt.reduced_models_load[i]
             self.opts[i] = opt
             self.multistage_model[i] = MultiStageRunner(self.opts[i])
         
