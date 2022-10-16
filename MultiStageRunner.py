@@ -155,6 +155,7 @@ class MultistageCombiner():
     def generate_samples(self, N=1, save_traj=True, stochastic=True):
         for i in range(1, N+1):
             x = self.sample(save_traj, stochastic)
+            print(x)
             self.save_sample(x, i)
     
     def save_sample(self, x, i):
