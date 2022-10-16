@@ -134,6 +134,9 @@ class MultistageCombiner():
             opt.level_id = i
             opt.load = opt.reduced_models_load[i]
             self.opts[i] = opt
+
+            print(self.opts[i].level_id)
+            print(self.opts[i].load)
             self.multistage_model[i] = MultiStageRunner(self.opts[i])
         
         log_dir = os.path.join(opt.experiment_path,  'reduction_%d' % opt.reduction_levels, 'samples')
