@@ -517,7 +517,7 @@ class MultiStageRunner():
                     self.losses['outer_it_%d' % outer_it][phase]={}
                     self.losses['outer_it_%d' % outer_it][phase]['forward']={}
                     self.losses['outer_it_%d' % outer_it][phase]['backward']={}
-                    for i in range(1, opt.max_num_intervals//2**(outer_it-1)+1):
+                    for i in range(1, self.max_num_intervals//2**(outer_it-1)+1):
                         self.losses['outer_it_%d' % outer_it][phase]['forward'][str(i)] = []
                         self.losses['outer_it_%d' % outer_it][phase]['backward'][str(i)] = []
 
