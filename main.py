@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import torch
 
 from runner import Runner
-from MultiStageRunner import MultiStageRunner
+from MultiStageRunner import MultiStageRunner, MultistageCombiner
 import util
 import options
 
@@ -40,10 +40,14 @@ def main(opt):
             #run.sb_joint_train(opt)
             #run.sanity_check(opt) #-> passed (bug solved)
             run.sb_alterating_train(opt)
+            
     elif opt.phase == 'test':
         if opt.training_scheme == 'divideNconquer':
-            run = MultiStageRunner(opt)
-            run.experimental_features(opt) #-> test the effect of decreasing sigma on the ODE and SDE trajectories (plot paths, calculate average ODE curvature)
+            run = MultistageCombiner(opt)
+            run.generate_samples()
+
+            #run = MultiStageRunner(opt)
+            #run.experimental_features(opt) #-> test the effect of decreasing sigma on the ODE and SDE trajectories (plot paths, calculate average ODE curvature)
 
 if not opt.cpu:
     with torch.cuda.device(opt.gpu):

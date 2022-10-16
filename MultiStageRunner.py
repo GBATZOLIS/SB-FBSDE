@@ -126,6 +126,47 @@ class MultistageEarlyStoppingCallback():
         return status
 
 #create a new class that inherits the class of all models in reduced level j and can perform sampling.
+class MultistageCombiner():
+    def __init__(self, opt):
+        self.multistage_model = {}
+        self.opts = {}
+        for i in range(1, opt.reduction_levels+1):
+            opt.level_id = i
+            opt.load = getattr(opt, 'load_%d' % i)
+            self.opts[i] = opt
+            self.multistage_model[i] = MultiStageRunner(self.opts[i])
+        
+        log_dir = os.path.join(opt.experiment_path,  'reduction_%d' % opt.reduction_levels, 'samples')
+        self.writer = SummaryWriter(log_dir=log_dir)
+    
+    def sample(self, save_traj=True, stochastic=True):
+        levels = sorted(list(self.opts.keys()), reverse=True)
+        x = None
+        for level in levels:
+            opt = self.opts[level]
+            out = self.multistage_model[level].sample(opt, opt.base_discretisation, x, save_traj, stochastic)
+            x = out['sample']
+        
+        return x
+    
+    def generate_samples(self, N=1, save_traj=True, stochastic=True):
+        for i in range(1, N+1):
+            x = self.sample(save_traj, stochastic)
+            self.save_sample(x, i)
+    
+    def save_sample(self, x, i):
+        opt = self.opts[1]
+        img_dataset = util.is_image_dataset(opt)
+        if img_dataset:
+            x = x.cpu()
+            grid_images = torchvision.utils.make_grid(x, nrow=int(np.sqrt(x.size(0))), normalize=True, scale_each=True)
+            self.writer.add_image('%d' % i, grid_images)
+        else:
+            x = x.cpu()
+            img = self.multistage_model[1].tensorboard_scatter_plot(x, opt.problem_name, -1, -1)
+            self.writer.add_image('%d' % i, img)
+
+
 
 #instruction to myself: Modify this class so that it does the training and the sampling of the reduced unit i which is found in the reduced level j.
 #we need to calculate the maximum and minimum SNRs of reduced unit i. We need to understand if it is the last unit 
@@ -312,7 +353,7 @@ class MultiStageRunner():
         else:
             val_batches = opt.val_batches
             
-        for _ in tqdm(range(val_batches)): #number of batches in the validation dataset.
+        for _ in range(val_batches): #number of batches in the validation dataset.
             xs, zs_impt, ts_ = self.sample_train_data(opt, policy_impt, dyn, ts)
             xs.requires_grad_(True)
             xs = util.flatten_dim01(xs)
@@ -692,8 +733,7 @@ class MultiStageRunner():
     def encode(self, opt, discretisation, save_traj=True, stochastic=True):
         #1.) detect number of SBP stages
         outer_it = self.z_f.starting_outer_it.item()
-        max_num_intervals = opt.max_num_intervals
-        num_intervals = max_num_intervals // 2**(outer_it-1)
+        num_intervals = self.max_num_intervals // 2**(outer_it-1)
         inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
                                                                 self.level_min_time, self.level_max_time, num_intervals)
 
@@ -738,11 +778,10 @@ class MultiStageRunner():
 
     #this method needs to be modified
     @torch.no_grad()
-    def sample(self, opt, discretisation, save_traj=True, stochastic=True):
+    def sample(self, opt, discretisation, x=None, save_traj=True, stochastic=True):
         #1.) detect number of SBP stages
         outer_it = self.z_f.starting_outer_it.item()
-        max_num_intervals = opt.max_num_intervals
-        num_intervals = max_num_intervals // 2**(outer_it-1)
+        num_intervals = self.max_num_intervals // 2**(outer_it-1)
         inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
                                                                 self.level_min_time, self.level_max_time, num_intervals)
 
@@ -759,7 +798,9 @@ class MultiStageRunner():
             ts = torch.flip(ts,dims=[0])
 
             if i==0:
-                x = q.sample() #initialise from p_prior
+                if x is None:
+                    x = q.sample().to(opt.device)
+
                 xs = torch.empty((x.size(0), discretisation*num_intervals+1, *x.shape[1:])) if save_traj else None
 
             if save_traj:
@@ -779,16 +820,15 @@ class MultiStageRunner():
                     drift = drift_fn(x,t)
                     x = x + drift * (-interval_dyn.dt)
                 
-                
                 if save_traj:
                     xs[:,i*discretisation+idx+1,::] = x.detach().cpu()
             
-        return {'trajectory': xs, 'sample':x.detach().cpu()}
+        return {'trajectory': xs, 'sample': x}
     
     @torch.no_grad()
     def multi_sb_generate_sample(self, opt, inter_pq_s, discretisation, initial_sample=None):
         sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
-        for i, key in tqdm(enumerate(sorted_keys)):
+        for i, key in enumerate(sorted_keys):
             p, q = inter_pq_s[key]
             interval_dyn = sde.build(opt, p, q)
             ts = torch.linspace(p.time, q.time, discretisation)
