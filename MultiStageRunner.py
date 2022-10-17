@@ -157,6 +157,8 @@ class MultistageCombiner():
             x = self.sample(save_traj, stochastic)
             print(x)
             self.save_sample(x, i)
+        
+        self.writer.close()
     
     def save_sample(self, x, i):
         opt = self.opts[1]
@@ -165,12 +167,12 @@ class MultistageCombiner():
             x = x.cpu()
             grid_images = torchvision.utils.make_grid(x, nrow=int(np.sqrt(x.size(0))), normalize=True, scale_each=True)
             self.writer.add_image('%d' % i, grid_images)
-            self.writer.flush()
+            #self.writer.flush()
         else:
             x = x.cpu()
             img = self.multistage_model[1].tensorboard_scatter_plot(x, opt.problem_name, -1, -1)
             self.writer.add_image('%d' % i, img)
-            self.writer.flush()
+            #self.writer.flush()
 
 
 
