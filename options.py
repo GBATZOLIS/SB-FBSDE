@@ -58,6 +58,7 @@ def set():
     parser.add_argument('--reweighting-factor', type=int, default=1, help='Reweighting factor. Default=1, i.e. no reweighting.')
 
     #new
+    parser.add_argument('--prev-reduction-levels', type=int, default=None, help='The number of previous reduction levels. Default=None=opt.max_num_intervals')
     parser.add_argument('--reduction-levels', type=int, default=8, help='The number of reduction intervals. This depends on the number of available computational units (gpus).')
     parser.add_argument('--level-id', type=int, default=1, help='ID of the interval to be either reduced or taught based on the phase of the multistage algorithm.')
     parser.add_argument('--reduced-models-load', type=str, nargs='+', default=[], help='reduced models checkpoints')
@@ -161,6 +162,9 @@ def set():
 
     opt.ckpt_path = os.path.join(os.multistage_phase_path, 'checkpoints')
     os.makedirs(opt.ckpt_path, exist_ok=True)
+
+    if opt.prev_reduction_levels is None:
+        opt.prev_reduction_levels = opt.max_num_intervals
 
     #opt.eval_path = os.path.join(os.multistage_phase_path, 'eval')
     #os.makedirs(opt.eval_path, exist_ok=True)

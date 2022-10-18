@@ -206,7 +206,7 @@ class MultiStageRunner():
         self.level_max_time = times[self.level]
         print('min time: %.3f - max time: %.3f' % (self.level_min_time, self.level_max_time))
 
-        self.max_num_intervals = opt.max_num_intervals // opt.reduction_levels
+        self.max_num_intervals = opt.prev_reduction_levels // opt.reduction_levels
         print('Max number of intervals: %d' % self.max_num_intervals)
         self.num_outer_iterations = int(np.log2(self.max_num_intervals))+1
         print('Number of outer iterations: %d' % self.num_outer_iterations)

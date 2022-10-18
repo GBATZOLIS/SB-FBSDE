@@ -87,7 +87,7 @@ class MultiStageSchrodingerBridgePolicy(SchrodingerBridgePolicy):
     # note: scale_by_g matters only for pre-trained model
     def __init__(self, opt, direction, dyn, net, use_t_idx=False, scale_by_g=True):
         super(MultiStageSchrodingerBridgePolicy, self).__init__(opt, direction, dyn, net, use_t_idx, scale_by_g)
-        num_intervals = opt.max_num_intervals // opt.reduction_levels
+        num_intervals = opt.prev_reduction_levels // opt.reduction_levels
         self.initialize_logs(num_intervals, opt.reduction_levels)
 
     def initialize_logs(self, num_intervals:int, reduction_levels:int):
