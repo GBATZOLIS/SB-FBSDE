@@ -122,7 +122,9 @@ def restore_checkpoint(opt, runner, load_name):
                     final_outer_it = checkpoint[k]['starting_outer_it']
                     for outer_it in range(1, final_outer_it+1):
                         for phase in ['train', 'val']:
-                            for i in range(1, checkpoint[k]['num_intervals'].item()//2**(outer_it-1)+1):
+                            checkpoint_intervals = checkpoint[k]['num_intervals'].item()
+                            print('checkpoint_intervals: ', checkpoint_intervals)
+                            for i in range(1, checkpoint_intervals//2**(outer_it-1)+1):
                                 obj.register_buffer('outer_it_%d_%s_forward_loss_%d' % (outer_it, phase, i), checkpoint[k]['outer_it_%d_%s_forward_loss_%d' % (outer_it, phase, i)])
                                 obj.register_buffer('outer_it_%d_%s_backward_loss_%d' % (outer_it, phase, i), checkpoint[k]['outer_it_%d_%s_backward_loss_%d' % (outer_it, phase, i)])
 
