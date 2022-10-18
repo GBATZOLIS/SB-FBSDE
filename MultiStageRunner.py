@@ -461,6 +461,9 @@ class MultiStageRunner():
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
             stop = early_stopper()
             if stop:
+                #save the checkpoint before moving to the next outer iteration or finishing training.
+                keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
+                util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
                 break
             
             status = early_stopper.get_stages_status()
