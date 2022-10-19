@@ -132,7 +132,8 @@ class MultistageCombiner():
         self.opts = {}
         for i in range(1, opt.reduction_levels+1):
             opt.level_id = i
-            opt.load = opt.reduced_models_load[i]
+            checkpoints_path = os.path.join(opt.experiment_path, 'reduction_%d' % opt.reduction_levels, '%d' % i, 'checkpoints')
+            opt.load = os.path.join(checkpoints_path, opt.reduced_models_load[i]+'.npz')
             self.opts[i] = opt
 
             print(self.opts[i].level_id)
