@@ -62,6 +62,7 @@ def set():
     parser.add_argument('--reduction-levels', type=int, default=8, help='The number of reduction intervals. This depends on the number of available computational units (gpus).')
     parser.add_argument('--level-id', type=int, default=1, help='ID of the interval to be either reduced or taught based on the phase of the multistage algorithm.')
     parser.add_argument('--reduced-models-load', type=str, nargs='+', default=[], help='reduced models checkpoints')
+    parser.add_argument('--use-last-level', type=bool, default=True, help='Whether to use the prior distribution if we are in the last level.')
 
     # --------------- SB training & sampling (corrector) ---------------
     parser.add_argument("--training-scheme", type=str, default='standard', help='training schem. Options=[standard, divideNconquer]')

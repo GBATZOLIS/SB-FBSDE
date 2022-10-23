@@ -194,7 +194,11 @@ class MultiStageRunner():
         #level settings
         self.level = opt.level_id #1,2,...,N
         self.reduction_levels = opt.reduction_levels #N
-        self.last_level = True if self.level == self.reduction_levels else False
+
+        if opt.use_last_level:
+            self.last_level = True if self.level == self.reduction_levels else False
+        else:
+            self.last_level = False
 
         snr_vals = np.logspace(self.log_SNR_max, self.log_SNR_min, num=self.reduction_levels+1, base=np.exp(1))
         self.level_log_SNR_max = np.log(snr_vals[self.level-1])
