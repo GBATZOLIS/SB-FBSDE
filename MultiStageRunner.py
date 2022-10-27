@@ -557,9 +557,11 @@ class MultiStageRunner():
         optimizer_b, _, sched_b = self.get_optimizer_ema_sched(policy_b)
         
         outer_iterations = self.num_outer_iterations 
-        num_intervals = self.max_num_intervals 
+        
         tr_steps = opt.policy_updates
         for outer_it in range(self.starting_outer_it, outer_iterations+1):
+            num_intervals = self.max_num_intervals//2**(outer_it-1)
+            
             inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
                                                                     self.level_min_time, self.level_max_time, num_intervals)
             val_inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
@@ -574,7 +576,7 @@ class MultiStageRunner():
                     self.losses['outer_it_%d' % outer_it][phase]={}
                     self.losses['outer_it_%d' % outer_it][phase]['forward']={}
                     self.losses['outer_it_%d' % outer_it][phase]['backward']={}
-                    for i in range(1, self.max_num_intervals//2**(outer_it-1)+1):
+                    for i in range(1, num_intervals+1):
                         self.losses['outer_it_%d' % outer_it][phase]['forward'][str(i)] = []
                         self.losses['outer_it_%d' % outer_it][phase]['backward'][str(i)] = []
 
@@ -583,8 +585,6 @@ class MultiStageRunner():
                                             sched_f, sched_b, 
                                             inter_pq_s, val_inter_pq_s, new_discretisation, 
                                             tr_steps, outer_it)
-
-            num_intervals = num_intervals // 2
 
             self.z_f.starting_outer_it += 1
     
