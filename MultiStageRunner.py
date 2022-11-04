@@ -770,7 +770,6 @@ class MultiStageRunner():
         plt.savefig(fn_pdf)
         plt.clf()
 
-
     def experimental_features(self, opt):
         img_dataset = util.is_image_dataset(opt)
         if img_dataset:
@@ -778,7 +777,6 @@ class MultiStageRunner():
         else:
             self.visualize_trajectories(opt, discretisation=4, stochastic=False)
         
-
     def generate_samples(self, opt, discretisation, stochastic):
         #save_path = os.path.join(opt.experiment_path, 'testing')
         #os.makedirs(save_path, exist_ok=True)
@@ -819,7 +817,6 @@ class MultiStageRunner():
 
         plt.scatter(x[:,0], x[:,1])
         plt.savefig(os.path.join(save_path, 'encoded-traj-%s.png' % ('sde' if stochastic else 'ode')))
-
 
     def estimate_average_curvature(self, opt):
         pass
