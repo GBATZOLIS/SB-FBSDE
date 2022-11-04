@@ -142,9 +142,9 @@ def restore_checkpoint(opt, runner, load_name):
         print(green('#loading form ema shadow parameter for polices'))
     print(magenta("#######summary of checkpoint##########"))
 
-def multi_SBP_save_checkpoint(opt, runner, keys, outer_it, inner_it):
+def multi_SBP_save_checkpoint(opt, runner, keys, outer_it, stage_num, inner_it):
     checkpoint = {}
-    fn = opt.ckpt_path + "/{0}_{1}.npz".format(outer_it, inner_it)
+    fn = opt.ckpt_path + "/{0}_{1}_{2}.npz".format(outer_it, stage_num, inner_it)
     with torch.cuda.device(opt.gpu):
         for k in keys:
             checkpoint[k] = getattr(runner,k).state_dict()

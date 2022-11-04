@@ -453,7 +453,7 @@ class MultiStageRunner():
                                optimizer_f, optimizer_b, 
                                sched_f, sched_b, 
                                inter_pq_s, val_inter_pq_s, discretisation, 
-                               tr_steps, outer_it):
+                               tr_steps, outer_it, stage_num):
 
         policy_opt, policy_impt = {
             'forward':  [self.z_f, self.z_b], # train forward, sample from backward
@@ -504,6 +504,32 @@ class MultiStageRunner():
             policy_opt.global_step = torch.tensor(self.global_step)
             policy_opt.register_buffer('outer_it_%d_train_%s_loss_%d' % (outer_it, direction, (interval_key+1)), 
                                       torch.tensor(self.losses['outer_it_%d' % outer_it]['train'][direction][str(interval_key+1)]))
+
+            if inner_it % opt.inner_it_save_freq == 0 and inner_it !=0:
+                keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
+                util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, stage_num, inner_it)
+            
+            if inner_it % opt.sampling_freq == 0:
+                with torch.no_grad():
+                    sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
+                    sample = sample.to('cpu')
+                    #gt_sample = inter_pq_s[0][0].sample()
+                
+                img_dataset = util.is_image_dataset(opt)
+                if img_dataset:
+                    sample_imgs =  sample.cpu()
+                    grid_images = torchvision.utils.make_grid(sample_imgs, normalize=True, scale_each=True)
+                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), grid_images)
+                else:
+                    problem_name = opt.problem_name
+                    p, q = inter_pq_s[0]
+                    dyn = sde.build(opt, p, q)
+                    img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
+                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), img)
+            
+            # We need to add the validation here. But let's skip it for the time being. 
+            # It's the only thing missing. 
+            # We then need to replace the train loss with the val loss in MultistageEarlyStoppingCallback
 
         #reset after the end of the outer iteration.
         self.starting_inner_it[direction] = 1
@@ -640,19 +666,19 @@ class MultiStageRunner():
                     self.sb_outer_stage(opt, 'forward',
                                       optimizer_f, optimizer_b, sched_f, sched_b, 
                                       inter_pq_s, val_inter_pq_s, new_discretisation, 
-                                      tr_steps, outer_it)
+                                      tr_steps, outer_it, stage_num)
                     self.z_f.starting_stage += 1
                 else:
                     self.sb_outer_stage(opt, 'backward',
                                         optimizer_f, optimizer_b, sched_f, sched_b, 
                                         inter_pq_s, val_inter_pq_s, new_discretisation, 
-                                        tr_steps, outer_it)
+                                        tr_steps, outer_it, stage_num)
                     self.z_b.starting_stage += 1
                     
                     self.sb_outer_stage(opt, 'forward',
                                         optimizer_f, optimizer_b, sched_f, sched_b, 
                                         inter_pq_s, val_inter_pq_s, new_discretisation, 
-                                        tr_steps, outer_it)
+                                        tr_steps, outer_it, stage_num)
                     self.z_f.starting_stage += 1
 
             self.z_f.starting_outer_it += 1
