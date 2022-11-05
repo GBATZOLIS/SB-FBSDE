@@ -476,7 +476,7 @@ class MultiStageRunner():
             if stop or inner_it == opt.num_inner_iterations:
                 #save the checkpoint before moving to the next outer iteration or finishing training.
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
-                util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
+                util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, stage_num, inner_it)
                 break
 
             status = early_stopper.get_stages_status()

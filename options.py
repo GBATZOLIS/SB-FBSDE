@@ -138,8 +138,11 @@ def set():
     # torch.autograd.set_detect_anomaly(True)
     
     # ========= auto setup & path handle =========
-    opt.device='cuda:'+str(opt.gpu)
-    #opt.device='cpu'
+    if opt.cpu:
+        opt.device='cpu'
+    else:
+        opt.device='cuda:'+str(opt.gpu)
+        
     opt.model_configs = model_configs
     if opt.lr is not None:
         opt.lr_f, opt.lr_b = opt.lr, opt.lr
