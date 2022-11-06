@@ -697,21 +697,22 @@ class MultiStageRunner():
                                       optimizer_f, optimizer_b, sched_f, sched_b, 
                                       inter_pq_s, val_inter_pq_s, new_discretisation, 
                                       tr_steps, outer_it, stage_num)
-                    self.z_f.starting_stage += 1
+                    self.logs['resume_info']['forward']['starting_stage'] += 1
                 else:
                     self.sb_outer_stage(opt, 'backward',
                                         optimizer_f, optimizer_b, sched_f, sched_b, 
                                         inter_pq_s, val_inter_pq_s, new_discretisation, 
                                         tr_steps, outer_it, stage_num)
-                    self.z_b.starting_stage += 1
+                    self.logs['resume_info']['backward']['starting_stage'] += 1
                     
                     self.sb_outer_stage(opt, 'forward',
                                         optimizer_f, optimizer_b, sched_f, sched_b, 
                                         inter_pq_s, val_inter_pq_s, new_discretisation, 
                                         tr_steps, outer_it, stage_num)
-                    self.z_f.starting_stage += 1
-
-            self.z_f.starting_outer_it += 1
+                    self.logs['resume_info']['forward']['starting_stage'] += 1
+            
+            self.logs['resume_info']['forward']['starting_outer_it']+=1
+            self.logs['resume_info']['backward']['starting_outer_it']+=1
     
     def compute_discretisation(self, opt, outer_it):
         if opt.discretisation_policy == 'double':
