@@ -167,6 +167,9 @@ def set():
     opt.ckpt_path = os.path.join(os.multistage_phase_path, 'checkpoints')
     os.makedirs(opt.ckpt_path, exist_ok=True)
 
+    opt.logs_path = os.path.join(os.multistage_phase_path, 'logs')
+    os.makedirs(opt.ckpt_path, exist_ok=True)
+
     if opt.prev_reduction_levels is None:
         opt.prev_reduction_levels = opt.max_num_intervals
 

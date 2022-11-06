@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import torch
 import torchvision.utils as tu
 from torch.nn.functional import adaptive_avg_pool2d
+import pickle
 
 try:
     from tqdm import tqdm
@@ -85,11 +86,16 @@ def get_load_it(load_name):
         return int(nums[-2])
     return int(nums[-1])
 
+def restore_logs(load_name):
+    with open(load_name, 'rb') as handle:
+        logs = pickle.load(handle)
+    return logs
+
 def restore_checkpoint(opt, runner, load_name):
     assert load_name is not None
     print(green("#loading checkpoint {}...".format(load_name)))
 
-    if 'checkpoint_16.pth' in load_name:
+    if 'checkpoint_16.pth' in load_name: #this should be modified if we want to use it. It should give a bug at the moment.
         # loading pre-trained NCSN++ from
         # https://drive.google.com/drive/folders/1sP4GwvrYiI-sDPTp7sKYzsxJLGVamVMZ
         assert opt.backward_net == 'ncsnpp'
@@ -142,9 +148,15 @@ def restore_checkpoint(opt, runner, load_name):
         print(green('#loading form ema shadow parameter for polices'))
     print(magenta("#######summary of checkpoint##########"))
 
+def save_logs(opt, runner, outer_it, stage_num, inner_it):
+    logs_path = os.path.join(opt.logs_path, '%d_%d_%d.pkl')
+    f = open(logs_path, "wb")
+    pickle.dump(runner.logs, f)
+    f.close()
+
 def multi_SBP_save_checkpoint(opt, runner, keys, outer_it, stage_num, inner_it):
     checkpoint = {}
-    fn = opt.ckpt_path + "/{0}_{1}_{2}.npz".format(outer_it, stage_num, inner_it)
+    fn = os.path.join(opt.ckpt_path, '%d_%d_%d.npz' % (outer_it, stage_num, inner_it))
     with torch.cuda.device(opt.gpu):
         for k in keys:
             checkpoint[k] = getattr(runner,k).state_dict()

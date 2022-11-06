@@ -94,11 +94,11 @@ class MultistageEarlyStoppingCallback():
     def __init__(self, patience, loss_values):
         self.early_stopping_callbacks={}
         self.loss_values = loss_values
-        for stage in loss_values.keys():
-            self.early_stopping_callbacks['%s' % stage] = EarlyStoppingCallback(patience, loss_values[stage])
+        for interval in loss_values.keys():
+            self.early_stopping_callbacks['%d' % interval] = EarlyStoppingCallback(patience, loss_values[interval])
     
-    def add_stage_value(self, value, stage):
-        self.early_stopping_callbacks['%s' % stage].add_value(value)
+    def add_stage_value(self, value, interval):
+        self.early_stopping_callbacks['%d' % interval].add_value(value)
 
     def __call__(self):
         checks = []
@@ -108,15 +108,38 @@ class MultistageEarlyStoppingCallback():
     
     def get_stages_status(self):
         #returns the convergence status of all the intermediate stages
-        stages = self.loss_values.keys()
+        intervals = self.loss_values.keys()
         status = {}
-        for stage in stages:
-            converged = self.early_stopping_callbacks['%s' % stage]()
+        for interval in intervals:
+            converged = self.early_stopping_callbacks['%d' % interval]()
             if converged:
-                status[stage] = 1
+                status[interval] = 1
             else:
-                status[stage] = 0
+                status[interval] = 0
         return status
+
+def initialise_logs(num_intervals:int, reduction_levels:int):
+    logs = {}
+    logs['num_intervals'] = num_intervals
+    logs['reduction_levels'] = reduction_levels
+    logs['resume_info'] = {}
+    for direction in ['forward', 'backward']:
+        logs['resume_info'][direction] = {}
+        logs['resume_info'][direction]['starting_outer_it'] = 1
+        logs['resume_info'][direction]['starting_stage'] = 1
+        logs['resume_info'][direction]['starting_inner_it'] = 1
+        logs['resume_info'][direction]['global_step'] = 0 #probably redundant
+        logs['loss'] = {}
+        logs['loss'][direction] = {}
+        outer_it = 1
+        logs['loss'][direction][outer_it] = {}
+        stage = 1
+        logs['loss'][direction][outer_it][stage]={}
+        for phase in ['train', 'val']:
+            logs['loss'][direction][outer_it][stage][phase] = {}
+            for i in range(1, num_intervals+1):
+                logs['loss'][direction][outer_it][stage][phase][i] = []
+    return logs
 
 #create a new class that inherits the class of all models in reduced level j and can perform sampling.
 class MultistageCombiner():
@@ -218,26 +241,32 @@ class MultiStageRunner():
         self.optimizer_b, self.ema_b, self.sched_b = build_optimizer_ema_sched(opt, self.z_b)
 
         if opt.load:
-            util.restore_checkpoint(opt, self, opt.load)
+            checkpoint_path = os.path.join(opt.ckpt_path, opt.load + '.npz')
+            util.restore_checkpoint(opt, self, checkpoint_path)
 
             if self.reduction_levels < self.z_f.reduction_levels.item():
                 #in this case we enter a new reduction cycle
                 #we need to initialize the logs
                 print('New option reduction levels less than loaded reduction levels.')
                 print('We are entering a new reduction cycle.')
-                self.z_f.initialize_logs(self.max_num_intervals, self.reduction_levels)
-                self.z_b.initialize_logs(self.max_num_intervals, self.reduction_levels)
+                self.logs = initialise_logs(self.max_num_intervals, self.reduction_levels)
             else:
                 print('New option reduction levels same as the loaded reduction levels')
                 print('We are either resuming training or using the loaded model for sampling.')
+                logs_path = os.path.join(opt.logs_path, opt.load + '.pkl')
+                self.logs = util.restore_logs(logs_path)
+        else:
+            self.logs = initialise_logs(self.max_num_intervals, self.reduction_levels)
         
-        self.starting_outer_it = self.z_f.starting_outer_it.item()
-        self.starting_stage = self.z_f.starting_stage.item()
-        self.skip_backward = True if self.z_b.starting_stage.item() > self.z_f.starting_stage.item() else False
-        self.global_step = self.z_f.global_step.item()
-        self.starting_inner_it = {'forward': self.z_f.starting_inner_it.item(),
-                                  'backward': self.z_b.starting_inner_it.item()}
-
+        #every should be read/written from/to self.logs from now on.
+        self.starting_outer_it = self.logs['resume_info']['forward']['starting_outer_it']
+        self.starting_stage = self.logs['resume_info']['forward']['starting_stage']
+        self.skip_backward = True if self.logs['resume_info']['backward']['starting_stage'] > self.logs['resume_info']['forward']['starting_stage'] else False
+        self.global_step = self.logs['resume_info']['forward']['global_step']
+        self.starting_inner_it = {'forward': self.logs['resume_info']['forward']['starting_inner_it'],
+                                  'backward': self.logs['resume_info']['backward']['starting_inner_it']}
+        
+        '''
         self.losses = {}
         self.losses['outer_it_%d' % self.starting_outer_it] = {}
         for phase in ['train', 'val']:
@@ -248,12 +277,15 @@ class MultiStageRunner():
             for i in range(1, self.max_num_intervals//2**(self.starting_outer_it-1)+1):
                 self.losses['outer_it_%d' % self.starting_outer_it][phase]['forward'][str(i)] = getattr(self.z_f, 'outer_it_%d_%s_forward_loss_%d' % (self.starting_outer_it, phase, i)).tolist()
                 self.losses['outer_it_%d' % self.starting_outer_it][phase]['backward'][str(i)] = getattr(self.z_b, 'outer_it_%d_%s_backward_loss_%d' % (self.starting_outer_it, phase, i)).tolist()
+        '''
+
+        self.losses = self.logs['loss']
 
         if opt.log_tb: # tensorboard related things
             self.it_f = 0
             self.it_b = 0
 
-            log_dir = os.path.join(opt.experiment_path,  'reduction_%d' % opt.reduction_levels, '%d' % opt.level_id, 'logs')
+            log_dir = os.path.join(opt.experiment_path,  'reduction_%d' % opt.reduction_levels, '%d' % opt.level_id, 'tensorboard_logs')
             self.writer = SummaryWriter(log_dir=log_dir)
 
     #done
@@ -405,7 +437,7 @@ class MultiStageRunner():
 
     def alternating_policy_update(self, opt, direction, interval_key, 
                                              policy_impt, policy_opt, outer_it,
-                                             dyn, ts, tr_steps=1):
+                                             dyn, ts, stage_num, tr_steps=1):
 
         optimizer, ema, sched = self.get_optimizer_ema_sched(policy_opt)
 
@@ -441,9 +473,8 @@ class MultiStageRunner():
             ema.update()
             if sched is not None: sched.step()
             
-            self.losses['outer_it_%d' % outer_it]['train'][direction][str(interval_key+1)].append(loss.item())
-            direction_interval_steps = len(self.losses['outer_it_%d' % outer_it]['train'][direction][str(interval_key+1)])
-            self.writer.add_scalar('outer_it_%d_train_%s_loss_%d' % (outer_it, direction, (interval_key+1)), loss, global_step=direction_interval_steps)
+            self.losses[direction][outer_it][stage_num]['train'][interval_key].append(loss.item())
+            self.writer.add_scalar('outer_it_%d_train_%s_interval_%d' % (outer_it, direction, interval_key), loss)
 
             losses.append(loss.item())
 
@@ -467,7 +498,7 @@ class MultiStageRunner():
 
         #I need to modify the functionality of MultistageEarlyStoppingCallback
         #we need to replace train with val once we sort out the validation calculation.
-        early_stopper = MultistageEarlyStoppingCallback(patience=opt.stopping_patience, loss_values=self.losses['outer_it_%d' % outer_it]['train'][direction]) 
+        early_stopper = MultistageEarlyStoppingCallback(patience=opt.stopping_patience, loss_values=self.losses[direction][outer_it][stage_num]['train']) 
         
         #we should stop the training when we have convergence of all the intervals 
         #or we reach the max number of allowed iterations in one training episode
@@ -477,18 +508,15 @@ class MultiStageRunner():
                 #save the checkpoint before moving to the next outer iteration or finishing training.
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
                 util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, stage_num, inner_it)
+                util.save_logs(opt, self, outer_it, stage_num, inner_it)
                 break
 
             status = early_stopper.get_stages_status()
             probs = self.convergence_status_to_probs(status, opt.reweighting_factor)
             intervals = list(probs.keys())
-                
             weights = [probs[key] for key in intervals]
             interval_key = random.choices(intervals, weights=weights, k=1)[0]
-            
-            interval_key = int(interval_key)-1
-            p, q = inter_pq_s[interval_key]
-
+            p, q = inter_pq_s[interval_key-1]
             interval_dyn = sde.build(opt, p, q)
             ts = torch.linspace(p.time, q.time, discretisation)
             new_dt = ts[1]-ts[0]
@@ -497,17 +525,18 @@ class MultiStageRunner():
 
             losses = self.alternating_policy_update(opt, direction, interval_key, 
                                                     policy_impt, policy_opt, outer_it,
-                                                    interval_dyn, ts, tr_steps=tr_steps)
+                                                    interval_dyn, ts, stage_num, tr_steps=tr_steps)
+            avg_loss = np.mean(losses)
+            early_stopper.add_stage_value(avg_loss, interval_key)
 
             self.global_step += 1
-            policy_opt.starting_inner_it = torch.tensor(inner_it)
-            policy_opt.global_step = torch.tensor(self.global_step)
-            policy_opt.register_buffer('outer_it_%d_train_%s_loss_%d' % (outer_it, direction, (interval_key+1)), 
-                                      torch.tensor(self.losses['outer_it_%d' % outer_it]['train'][direction][str(interval_key+1)]))
+            self.logs['resume_info'][direction]['starting_inner_it'] = inner_it
+            self.logs['resume_info'][direction]['global_step'] = self.global_step
 
             if inner_it % opt.inner_it_save_freq == 0 and inner_it !=0:
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
                 util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, stage_num, inner_it)
+                util.save_logs(opt, self, outer_it, stage_num, inner_it)
             
             if inner_it % opt.sampling_freq == 0:
                 with torch.no_grad():
@@ -531,9 +560,9 @@ class MultiStageRunner():
             # It's the only thing missing. 
             # We then need to replace the train loss with the val loss in MultistageEarlyStoppingCallback
 
-        #reset after the end of the outer iteration.
+        #reset after the end of the every stage.
         self.starting_inner_it[direction] = 1
-        policy_opt.starting_inner_it = torch.tensor(self.starting_inner_it[direction])
+        self.logs['resume_info'][direction]['starting_inner_it'] = 1
 
     def sb_outer_alternating_iteration(self, opt,
                                             optimizer_f, optimizer_b, 
