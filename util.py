@@ -149,7 +149,7 @@ def restore_checkpoint(opt, runner, load_name):
     print(magenta("#######summary of checkpoint##########"))
 
 def save_logs(opt, runner, outer_it, stage_num, inner_it):
-    logs_path = os.path.join(opt.logs_path, '%d_%d_%d.pkl')
+    logs_path = os.path.join(opt.logs_path, '%d_%d_%d.pkl' % (outer_it, stage_num, inner_it))
     f = open(logs_path, "wb")
     pickle.dump(runner.logs, f)
     f.close()
