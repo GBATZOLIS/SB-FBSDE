@@ -265,19 +265,6 @@ class MultiStageRunner():
         self.global_step = self.logs['resume_info']['forward']['global_step']
         self.starting_inner_it = {'forward': self.logs['resume_info']['forward']['starting_inner_it'],
                                   'backward': self.logs['resume_info']['backward']['starting_inner_it']}
-        
-        '''
-        self.losses = {}
-        self.losses['outer_it_%d' % self.starting_outer_it] = {}
-        for phase in ['train', 'val']:
-            self.losses['outer_it_%d' % self.starting_outer_it][phase] = {}
-            self.losses['outer_it_%d' % self.starting_outer_it][phase]['forward'] = {}
-            self.losses['outer_it_%d' % self.starting_outer_it][phase]['backward'] = {}
-
-            for i in range(1, self.max_num_intervals//2**(self.starting_outer_it-1)+1):
-                self.losses['outer_it_%d' % self.starting_outer_it][phase]['forward'][str(i)] = getattr(self.z_f, 'outer_it_%d_%s_forward_loss_%d' % (self.starting_outer_it, phase, i)).tolist()
-                self.losses['outer_it_%d' % self.starting_outer_it][phase]['backward'][str(i)] = getattr(self.z_b, 'outer_it_%d_%s_backward_loss_%d' % (self.starting_outer_it, phase, i)).tolist()
-        '''
 
         self.losses = self.logs['loss']
 
@@ -678,19 +665,19 @@ class MultiStageRunner():
                                                                     self.level_min_time, self.level_max_time, num_intervals, phase='val')
             new_discretisation = self.compute_discretisation(opt, outer_it)
             
+            starting_stage = self.starting_stage if outer_it == self.starting_outer_it else 1
+
             #initialise the losses for the next outer iteration
             #self.starting_outer_it has been initialised in the init method
             if outer_it >= self.starting_outer_it+1:
-                self.losses['outer_it_%d' % outer_it]={}
-                for phase in ['train', 'val']:
-                    self.losses['outer_it_%d' % outer_it][phase]={}
-                    self.losses['outer_it_%d' % outer_it][phase]['forward']={}
-                    self.losses['outer_it_%d' % outer_it][phase]['backward']={}
-                    for i in range(1, num_intervals+1):
-                        self.losses['outer_it_%d' % outer_it][phase]['forward'][str(i)] = []
-                        self.losses['outer_it_%d' % outer_it][phase]['backward'][str(i)] = []
+                for direction in ['forward', 'backward']:
+                    self.losses[direction][outer_it] = {}
+                    self.losses[direction][outer_it][starting_stage]={}
+                    for phase in ['train', 'val']:
+                        self.losses[direction][outer_it][starting_stage][phase] = {}
+                        for i in range(1, num_intervals+1):
+                            self.losses[direction][outer_it][starting_stage][phase][i] = []
 
-            starting_stage = self.starting_stage if outer_it == self.starting_outer_it else 1
             for stage_num in range(starting_stage, opt.num_stage+1):
                 if self.skip_backward and outer_it == self.starting_outer_it and stage_num == starting_stage:
                     self.sb_outer_stage(opt, 'forward',
