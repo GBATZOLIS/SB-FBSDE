@@ -123,13 +123,13 @@ def initialise_logs(num_intervals:int, reduction_levels:int):
     logs['num_intervals'] = num_intervals
     logs['reduction_levels'] = reduction_levels
     logs['resume_info'] = {}
+    logs['loss'] = {}
     for direction in ['forward', 'backward']:
         logs['resume_info'][direction] = {}
         logs['resume_info'][direction]['starting_outer_it'] = 1
         logs['resume_info'][direction]['starting_stage'] = 1
         logs['resume_info'][direction]['starting_inner_it'] = 1
         logs['resume_info'][direction]['global_step'] = 0 #probably redundant
-        logs['loss'] = {}
         logs['loss'][direction] = {}
         outer_it = 1
         logs['loss'][direction][outer_it] = {}
