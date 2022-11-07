@@ -267,6 +267,7 @@ class MultiStageRunner():
                                   'backward': self.logs['resume_info']['backward']['starting_inner_it']}
 
         self.losses = self.logs['loss']
+        print(self.losses.keys())
 
         if opt.log_tb: # tensorboard related things
             self.it_f = 0
