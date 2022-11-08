@@ -686,18 +686,34 @@ class MultiStageRunner():
                                       inter_pq_s, val_inter_pq_s, new_discretisation, 
                                       tr_steps, outer_it, stage_num)
                     self.logs['resume_info']['forward']['starting_stage'] += 1
+
                 else:
+                    if stage_num > starting_stage:
+                        for direction in ['forward', 'backward']:
+                            self.losses[direction][outer_it][stage_num] = {}
+                            for phase in ['train', 'val']:
+                                self.losses[direction][outer_it][stage_num][phase]={}
+                                for i in range(1, num_intervals+1):
+                                    self.losses[direction][outer_it][stage_num][phase][i] = []
+
                     self.sb_outer_stage(opt, 'backward',
                                         optimizer_f, optimizer_b, sched_f, sched_b, 
                                         inter_pq_s, val_inter_pq_s, new_discretisation, 
                                         tr_steps, outer_it, stage_num)
                     self.logs['resume_info']['backward']['starting_stage'] += 1
+
+                    for phase in ['train', 'val']:
+                            self.losses['backward'][outer_it][stage_num][phase]={}
+                            for i in range(1, num_intervals+1):
+                                self.losses['backward'][outer_it][stage_num][phase][i] = []
                     
                     self.sb_outer_stage(opt, 'forward',
                                         optimizer_f, optimizer_b, sched_f, sched_b, 
                                         inter_pq_s, val_inter_pq_s, new_discretisation, 
                                         tr_steps, outer_it, stage_num)
                     self.logs['resume_info']['forward']['starting_stage'] += 1
+
+                    
             
             self.logs['resume_info']['forward']['starting_outer_it']+=1
             self.logs['resume_info']['backward']['starting_outer_it']+=1
