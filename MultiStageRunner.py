@@ -701,11 +701,6 @@ class MultiStageRunner():
                                         inter_pq_s, val_inter_pq_s, new_discretisation, 
                                         tr_steps, outer_it, stage_num)
                     self.logs['resume_info']['backward']['starting_stage'] += 1
-
-                    for phase in ['train', 'val']:
-                            self.losses['backward'][outer_it][stage_num][phase]={}
-                            for i in range(1, num_intervals+1):
-                                self.losses['backward'][outer_it][stage_num][phase][i] = []
                     
                     self.sb_outer_stage(opt, 'forward',
                                         optimizer_f, optimizer_b, sched_f, sched_b, 
