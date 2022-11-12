@@ -498,6 +498,25 @@ class MultiStageRunner():
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
                 util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, stage_num, inner_it)
                 util.save_logs(opt, self, outer_it, stage_num, inner_it)
+
+                #print samples
+                with torch.no_grad():
+                    sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
+                    sample = sample.to('cpu')
+                    #gt_sample = inter_pq_s[0][0].sample()
+                
+                img_dataset = util.is_image_dataset(opt)
+                if img_dataset:
+                    sample_imgs =  sample.cpu()
+                    grid_images = torchvision.utils.make_grid(sample_imgs, normalize=True, scale_each=True)
+                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), grid_images)
+                else:
+                    problem_name = opt.problem_name
+                    p, q = inter_pq_s[0]
+                    dyn = sde.build(opt, p, q)
+                    img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
+                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), img)
+                    
                 break
 
             status = early_stopper.get_stages_status()
