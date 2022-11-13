@@ -279,23 +279,28 @@ class MultiStageRunner():
     #done
     def setup_intermediate_distributions(self, opt, log_SNR_max, log_SNR_min, 
                                                     min_time, max_time, 
-                                                    num_intervals, phase='train'):
+                                                    num_intervals, discretisation_policy='constant', outer_it=1, phase='train'):
         #return {interval_number:[p,q]}
         snr_vals = np.logspace(log_SNR_max, log_SNR_min, num=num_intervals+1, base=np.exp(1))
         times = torch.linspace(min_time, max_time, num_intervals+1)
+
+        if discretisation_policy == 'constant':
+            batchsize = opt.samp_bs
+        elif discretisation_policy == 'double':
+            batchsize = opt.samp_bs // 2**(outer_it-1)
 
         intermediate_distributions = {}
         for i in range(num_intervals):
             if self.last_level:
                 if i < num_intervals - 1:
-                    p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i], phase)
-                    q = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i+1], phase)
+                    p = data.build_perturbed_data_sampler(opt, batchsize, snr_vals[i], phase)
+                    q = data.build_perturbed_data_sampler(opt, batchsize, snr_vals[i+1], phase)
                 elif i == num_intervals - 1:
-                    p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i], phase)
-                    q = data.build_prior_sampler(opt, opt.samp_bs)
+                    p = data.build_perturbed_data_sampler(opt, batchsize, snr_vals[i], phase)
+                    q = data.build_prior_sampler(opt, batchsize)
             else:
-                p = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i], phase)
-                q = data.build_perturbed_data_sampler(opt, opt.samp_bs, snr_vals[i+1], phase)
+                p = data.build_perturbed_data_sampler(opt, batchsize, snr_vals[i], phase)
+                q = data.build_perturbed_data_sampler(opt, batchsize, snr_vals[i+1], phase)
                 
             p.time = times[i]
             q.time = times[i+1]
@@ -494,12 +499,13 @@ class MultiStageRunner():
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
             stop = early_stopper()
             if stop or inner_it == opt.num_inner_iterations:
-                #save the checkpoint before moving to the next outer iteration or finishing training.
-                keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
-                util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, stage_num, inner_it)
-                util.save_logs(opt, self, outer_it, stage_num, inner_it)
+                if stage_num == opt.num_stage: #save only in the last stage (at the end of each outer iteration)
+                    #save the checkpoint before moving to the next outer iteration or finishing training.
+                    keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
+                    util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, stage_num, inner_it)
+                    util.save_logs(opt, self, outer_it, stage_num, inner_it)
 
-                #print samples
+                #print samples at the end of every stage
                 with torch.no_grad():
                     sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
                     sample = sample.to('cpu')
@@ -508,7 +514,7 @@ class MultiStageRunner():
                 img_dataset = util.is_image_dataset(opt)
                 if img_dataset:
                     sample_imgs =  sample.cpu()
-                    grid_images = torchvision.utils.make_grid(sample_imgs, normalize=True, scale_each=True)
+                    grid_images = torchvision.utils.make_grid(sample_imgs, nrow=int(np.sqrt(sample_imgs.size(0))), normalize=True, scale_each=True)
                     self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), grid_images)
                 else:
                     problem_name = opt.problem_name
@@ -516,7 +522,7 @@ class MultiStageRunner():
                     dyn = sde.build(opt, p, q)
                     img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
                     self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), img)
-                    
+
                 break
 
             status = early_stopper.get_stages_status()
@@ -541,12 +547,14 @@ class MultiStageRunner():
             self.logs['resume_info'][direction]['starting_inner_it'] = inner_it
             self.logs['resume_info'][direction]['global_step'] = self.global_step
 
-            if inner_it % opt.inner_it_save_freq == 0 and inner_it !=0:
+            
+            if self.global_step % opt.inner_it_save_freq == 0 and self.global_step !=0:
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
                 util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, stage_num, inner_it)
                 util.save_logs(opt, self, outer_it, stage_num, inner_it)
             
-            if inner_it % opt.sampling_freq == 0:
+            '''
+            if self.global_step % opt.sampling_freq == 0:
                 with torch.no_grad():
                     sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
                     sample = sample.to('cpu')
@@ -555,7 +563,7 @@ class MultiStageRunner():
                 img_dataset = util.is_image_dataset(opt)
                 if img_dataset:
                     sample_imgs =  sample.cpu()
-                    grid_images = torchvision.utils.make_grid(sample_imgs, normalize=True, scale_each=True)
+                    grid_images = torchvision.utils.make_grid(sample_imgs, nrow=int(np.sqrt(sample_imgs.size(0))), normalize=True, scale_each=True)
                     self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), grid_images)
                 else:
                     problem_name = opt.problem_name
@@ -563,7 +571,8 @@ class MultiStageRunner():
                     dyn = sde.build(opt, p, q)
                     img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
                     self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), img)
-            
+            '''
+
             # We need to add the validation here. But let's skip it for the time being. 
             # It's the only thing missing. 
             # We then need to replace the train loss with the val loss in MultistageEarlyStoppingCallback
@@ -680,9 +689,12 @@ class MultiStageRunner():
             num_intervals = self.max_num_intervals//2**(outer_it-1)
             
             inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
-                                                                    self.level_min_time, self.level_max_time, num_intervals)
+                                                                    self.level_min_time, self.level_max_time, num_intervals,
+                                                                    discretisation_policy=opt.discretisation_policy, outer_it=outer_it, phase='train')
             val_inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
-                                                                    self.level_min_time, self.level_max_time, num_intervals, phase='val')
+                                                                    self.level_min_time, self.level_max_time, num_intervals, 
+                                                                    discretisation_policy=opt.discretisation_policy, outer_it=outer_it, phase='val')
+            
             new_discretisation = self.compute_discretisation(opt, outer_it)
             
             starting_stage = self.starting_stage if outer_it == self.starting_outer_it else 1
