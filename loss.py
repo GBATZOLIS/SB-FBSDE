@@ -55,6 +55,21 @@ def compute_sb_nll_alternate_train(opt, dyn, ts, xs, zs_impt, policy_opt, return
     
     return loss, zs if return_z else loss
 
+def compute_sb_nll_joint_increment(opt, dyn, ts, xs_f, zs_f, policy_b, x_term_f=None):
+    #x_term_f is None for all levels and intervals apart from the last interval of the last level. last_level_last_stage=True.
+    assert xs_f.requires_grad and zs_f.requires_grad
+    if x_term_f is not None:
+        assert x_term_f.requires_grad
+    
+    batch_x_times_batch_t = ts.size(0)
+    with torch.enable_grad():
+        div_gz_b, zs_b = compute_div_gz(opt, dyn, ts, xs_f, policy_b, return_zs=True)
+        loss = 0.5*(zs_f + zs_b)**2 + div_gz_b
+        loss = torch.sum(loss*dyn.dt) / batch_x_times_batch_t
+        if x_term_f is not None:
+            loss = loss - dyn.q.log_prob(x_term_f).mean()
+    
+    return loss
 
 def compute_sb_nll_joint_train(opt, batch_x, dyn, ts, xs_f, zs_f, x_term_f, policy_b):
     """ Implementation of Eq (16) in our main paper.
@@ -64,7 +79,6 @@ def compute_sb_nll_joint_train(opt, batch_x, dyn, ts, xs_f, zs_f, x_term_f, poli
     assert xs_f.requires_grad and zs_f.requires_grad and x_term_f.requires_grad
 
     div_gz_b, zs_b = compute_div_gz(opt, dyn, ts, xs_f, policy_b, return_zs=True)
-
     loss = 0.5*(zs_f + zs_b)**2 + div_gz_b
     loss = torch.sum(loss*dyn.dt) / batch_x
     loss = loss - dyn.q.log_prob(x_term_f).mean()
