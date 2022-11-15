@@ -39,7 +39,7 @@ def build_prior_sampler(opt, batch_size):
     # image+VESDE -> use (sigma_max)^2; otherwise use 1.
     #cov_coef = opt.sigma_max**2 if (util.is_image_dataset(opt) and not util.use_vp_sde(opt)) else 1.
     cov_coef=opt.prior_std**2
-    prior = td.MultivariateNormal(torch.zeros(opt.data_dim), cov_coef*torch.eye(opt.data_dim[-1]))
+    prior = td.MultivariateNormal(torch.zeros(opt.data_dim).to(opt.device), (cov_coef*torch.eye(opt.data_dim[-1])).to(opt.device))
     return PriorSampler(prior, batch_size, opt.device)
 
 def build_data_sampler(opt, batch_size, phase):
@@ -327,7 +327,7 @@ class PerturbedDataSampler(DataSampler): #perturbed dump data sampler
 
 class PriorSampler: # a dump prior sampler to align with DataSampler
     def __init__(self, prior, batch_size, device):
-        self.prior = prior.to(device)
+        self.prior = prior
         self.batch_size = batch_size
         self.device = device
 
