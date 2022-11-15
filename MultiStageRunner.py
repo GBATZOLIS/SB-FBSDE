@@ -438,7 +438,7 @@ class MultiStageRunner():
 
                 xs_f, zs_f, ts_ = self.sample_train_data(opt, self.z_f, dyn, ts)
                 batch_x = xs_f.size(0)
-                
+
                 xs_f.requires_grad_(True)
                 zs_f.requires_grad_(True)
                 xs_f=util.flatten_dim01(xs_f)
@@ -450,7 +450,7 @@ class MultiStageRunner():
 
                 if self.last_level and key == sorted_keys[-1]:
                     x_term_f = xs_f[:,-1,::]
-                    x_term_f.requires_grad(True)
+                    x_term_f.requires_grad_(True)
                 else:
                     x_term_f = None
 
