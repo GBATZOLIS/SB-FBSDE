@@ -332,7 +332,7 @@ class PriorSampler: # a dump prior sampler to align with DataSampler
         self.device = device
 
     def log_prob(self, x):
-        return self.prior.log_prob(x)
+        return self.prior.log_prob(x).to(self.device)
 
     def sample(self):
         return self.prior.sample([self.batch_size]).to(self.device)
