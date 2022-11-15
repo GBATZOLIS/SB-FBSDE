@@ -327,7 +327,7 @@ class PerturbedDataSampler(DataSampler): #perturbed dump data sampler
 
 class PriorSampler: # a dump prior sampler to align with DataSampler
     def __init__(self, prior, batch_size, device):
-        self.prior = prior
+        self.prior = prior.to(device)
         self.batch_size = batch_size
         self.device = device
 
