@@ -746,6 +746,7 @@ class MultiStageRunner():
                     keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
                     util.multi_SBP_save_checkpoint(opt, self, keys, outer_it+1, 1, 1)
                     util.save_logs(opt, self, outer_it+1, 1, 1)
+                    break
                     
                 if self.skip_backward and outer_it == self.starting_outer_it and stage_num == starting_stage:
                     self.sb_outer_stage(opt, 'forward',
