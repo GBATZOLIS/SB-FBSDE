@@ -449,7 +449,7 @@ class MultiStageRunner():
                 zs_f=zs_f.to(opt.device)
 
                 if self.last_level and key == sorted_keys[-1]:
-                    x_term_f = xs_f[:,-1,::]
+                    x_term_f = xs_f[:,-1,::].clone().to(opt.device)
                     x_term_f.requires_grad_(True)
                 else:
                     x_term_f = None
