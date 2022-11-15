@@ -437,8 +437,8 @@ class MultiStageRunner():
                 ts = ts.to(opt.device)
 
                 xs_f, zs_f, ts_ = self.sample_train_data(opt, self.z_f, dyn, ts)
-
                 batch_x = xs_f.size(0)
+                
                 xs_f.requires_grad_(True)
                 zs_f.requires_grad_(True)
                 xs_f=util.flatten_dim01(xs_f)
@@ -454,7 +454,7 @@ class MultiStageRunner():
                 else:
                     x_term_f = None
 
-                interval_increment = compute_sb_nll_joint_increment(opt, dyn, ts, xs_f, zs_f, self.z_b, x_term_f=x_term_f)
+                interval_increment = compute_sb_nll_joint_increment(opt, dyn, ts_, xs_f, zs_f, self.z_b, x_term_f=x_term_f)
                 total_increment += interval_increment.item()
             
             average_total_increment += total_increment
