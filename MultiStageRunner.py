@@ -245,6 +245,7 @@ class MultiStageRunner():
         self.optimizer_f, self.ema_f, self.sched_f = build_optimizer_ema_sched(opt, self.z_f)
         self.optimizer_b, self.ema_b, self.sched_b = build_optimizer_ema_sched(opt, self.z_b)
 
+        self.load = True if opt.load else False
         if opt.load:
             checkpoint_path = os.path.join(opt.ckpt_path, opt.load + '.npz')
             util.restore_checkpoint(opt, self, checkpoint_path)
@@ -723,9 +724,10 @@ class MultiStageRunner():
 
             #initialise the losses for the next outer iteration
             #self.starting_outer_it has been initialised in the init method
-            if outer_it >= self.starting_outer_it+1:
-                self.losses['val_increment_loss'][outer_it] = []
 
+            initialisation_condition = outer_it not in self.losses['val_increment_loss'].keys()
+            if initialisation_condition:
+                self.losses['val_increment_loss'][outer_it] = []
                 for direction in ['forward', 'backward']:
                     self.losses[direction][outer_it] = {}
                     self.losses[direction][outer_it][starting_stage]={}
