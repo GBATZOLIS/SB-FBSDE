@@ -261,6 +261,18 @@ class MultiStageRunner():
                 print('We are either resuming training or using the loaded model for sampling.')
                 logs_path = os.path.join(opt.logs_path, opt.load + '.pkl')
                 self.logs = util.restore_logs(logs_path)
+                stop_info = opt.load.split('_')
+
+                #In this case we just finished the previous outer iteration 
+                #so we should inform the sampler that we self.starting_outer_it for sampling should be reduced by 1. 
+                #The resuming starts from the next outer iteration which is saved as the default starting outer it value.
+                if stop_info[1]=='1' and stop_info[2]=='1':
+                    print('We are reducing the starting outer it by 1.')
+                    self.reduce_outer_it_in_sampling = 1
+                else:
+                    print('We keep the same outer it as the one loaded from the model.')
+                    self.reduce_outer_it_in_sampling = 0
+
         else:
             self.logs = initialise_logs(self.max_num_intervals, self.reduction_levels)
         
@@ -1007,7 +1019,7 @@ class MultiStageRunner():
     @torch.no_grad()
     def sample(self, opt, discretisation, x=None, save_traj=True, stochastic=True):
         #1.) detect number of SBP stages
-        outer_it = self.z_f.starting_outer_it.item()
+        outer_it = self.z_f.starting_outer_it.item() - self.reduce_outer_it_in_sampling
         num_intervals = self.max_num_intervals // 2**(outer_it-1)
         inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
                                                                 self.level_min_time, self.level_max_time, num_intervals)
