@@ -154,6 +154,10 @@ class MultistageCombiner():
         for i in range(1, opt.reduction_levels+1):
             opt.level_id = i
             opt.load = opt.reduced_models_load[i-1]
+            multistage_phase_path = os.path.join(opt.experiment_path, 'reduction_%d' % opt.reduction_levels, '%d' % opt.level_id)
+            opt.ckpt_path = os.path.join(multistage_phase_path, 'checkpoints')
+            opt.logs_path = os.path.join(multistage_phase_path, 'logs')
+            
             self.opts[i] = opt
 
             print(self.opts[i].level_id)

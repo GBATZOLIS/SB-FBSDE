@@ -162,18 +162,18 @@ def set():
     opt.experiment_path = os.path.join(opt.experiment_problem_path, config_path)
     os.makedirs(opt.experiment_path, exist_ok=True)
     
-    os.multistage_phase_path = os.path.join(opt.experiment_path, 'reduction_%d' % opt.reduction_levels, '%d' % opt.level_id)
+    multistage_phase_path = os.path.join(opt.experiment_path, 'reduction_%d' % opt.reduction_levels, '%d' % opt.level_id)
 
-    opt.ckpt_path = os.path.join(os.multistage_phase_path, 'checkpoints')
+    opt.ckpt_path = os.path.join(multistage_phase_path, 'checkpoints')
     os.makedirs(opt.ckpt_path, exist_ok=True)
 
-    opt.logs_path = os.path.join(os.multistage_phase_path, 'logs')
+    opt.logs_path = os.path.join(multistage_phase_path, 'logs')
     os.makedirs(opt.logs_path, exist_ok=True)
 
     if opt.prev_reduction_levels is None:
         opt.prev_reduction_levels = opt.max_num_intervals
 
-    #opt.eval_path = os.path.join(os.multistage_phase_path, 'eval')
+    #opt.eval_path = os.path.join(multistage_phase_path, 'eval')
     #os.makedirs(opt.eval_path, exist_ok=True)
     '''
     if opt.snapshot_freq:
