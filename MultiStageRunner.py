@@ -751,7 +751,7 @@ class MultiStageRunner():
                         for i in range(1, num_intervals+1):
                             self.losses[direction][outer_it][starting_stage][phase][i] = []
             
-            stages_early_stopper = EarlyStoppingCallback(patience=6, loss_values=self.losses['val_increment_loss'][outer_it])
+            stages_early_stopper = EarlyStoppingCallback(patience=opt.stage_patience, loss_values=self.losses['val_increment_loss'][outer_it])
             for stage_num in range(starting_stage, opt.num_stage+1):
                 stop = stages_early_stopper()
                 if stop or stage_num == opt.num_stage:
