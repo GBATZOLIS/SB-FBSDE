@@ -157,7 +157,7 @@ class MultistageCombiner():
             multistage_phase_path = os.path.join(opt.experiment_path, 'reduction_%d' % opt.reduction_levels, '%d' % opt.level_id)
             opt.ckpt_path = os.path.join(multistage_phase_path, 'checkpoints')
             opt.logs_path = os.path.join(multistage_phase_path, 'logs')
-            
+
             self.opts[i] = opt
 
             print(self.opts[i].level_id)
@@ -1022,7 +1022,7 @@ class MultiStageRunner():
     @torch.no_grad()
     def sample(self, opt, discretisation, x=None, save_traj=True, stochastic=True):
         #1.) detect number of SBP stages
-        outer_it = self.z_f.starting_outer_it.item() - self.reduce_outer_it_in_sampling
+        outer_it = self.starting_outer_it - self.reduce_outer_it_in_sampling
         num_intervals = self.max_num_intervals // 2**(outer_it-1)
         inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
                                                                 self.level_min_time, self.level_max_time, num_intervals)
