@@ -122,17 +122,6 @@ def restore_checkpoint(opt, runner, load_name):
             ckpt_keys=[*checkpoint.keys()]
             for k in ckpt_keys:
                 obj = getattr(runner,k)
-
-                if k in ['z_f', 'z_b'] and opt.training_scheme == 'divideNconquer':
-                    #obj.register_buffer('monitor_loss', checkpoint[k]['monitor_loss'])
-                    final_outer_it = checkpoint[k]['starting_outer_it']
-                    for outer_it in range(1, final_outer_it+1):
-                        for phase in ['train', 'val']:
-                            checkpoint_intervals = checkpoint[k]['num_intervals'].item()
-                            for i in range(1, checkpoint_intervals//2**(outer_it-1)+1):
-                                obj.register_buffer('outer_it_%d_%s_forward_loss_%d' % (outer_it, phase, i), checkpoint[k]['outer_it_%d_%s_forward_loss_%d' % (outer_it, phase, i)])
-                                obj.register_buffer('outer_it_%d_%s_backward_loss_%d' % (outer_it, phase, i), checkpoint[k]['outer_it_%d_%s_backward_loss_%d' % (outer_it, phase, i)])
-
                 obj.load_state_dict(checkpoint[k])
 
         if len(full_keys)!=len(ckpt_keys):
@@ -148,15 +137,15 @@ def restore_checkpoint(opt, runner, load_name):
         print(green('#loading form ema shadow parameter for polices'))
     print(magenta("#######summary of checkpoint##########"))
 
-def save_logs(opt, runner, outer_it, stage_num, inner_it):
-    logs_path = os.path.join(opt.logs_path, '%d_%d_%d.pkl' % (outer_it, stage_num, inner_it))
+def save_logs(opt, runner, save_name):
+    logs_path = os.path.join(opt.logs_path, '%s.pkl' % save_name)
     f = open(logs_path, "wb")
     pickle.dump(runner.logs, f)
     f.close()
 
-def multi_SBP_save_checkpoint(opt, runner, keys, outer_it, stage_num, inner_it):
+def multi_SBP_save_checkpoint(opt, runner, keys, save_name):
     checkpoint = {}
-    fn = os.path.join(opt.ckpt_path, '%d_%d_%d.npz' % (outer_it, stage_num, inner_it))
+    fn = os.path.join(opt.ckpt_path, '%s.npz' % save_name)
     with torch.cuda.device(opt.gpu):
         for k in keys:
             checkpoint[k] = getattr(runner,k).state_dict()

@@ -118,7 +118,7 @@ class MultistageEarlyStoppingCallback():
                 status[interval] = 0
         return status
 
-def initialise_logs(num_intervals:int, reduction_levels:int):
+def initialise_logs(train_method, num_intervals, reduction_levels):
     logs = {}
     logs['num_intervals'] = num_intervals
     logs['reduction_levels'] = reduction_levels
@@ -126,24 +126,36 @@ def initialise_logs(num_intervals:int, reduction_levels:int):
     logs['loss'] = {}
 
     outer_it = 1
-    stage = 1
+    
+    if train_method == 'alternate':
+        stage = 1
+        logs['loss']['val_increment_loss'] = {}
+        logs['loss']['val_increment_loss'][outer_it] = []
 
-    logs['loss']['val_increment_loss'] = {}
-    logs['loss']['val_increment_loss'][outer_it] = []
+        for direction in ['forward', 'backward']:
+            logs['resume_info'][direction] = {}
+            logs['resume_info'][direction]['starting_outer_it'] = 1
+            logs['resume_info'][direction]['starting_stage'] = 1
+            logs['resume_info'][direction]['starting_inner_it'] = 1
+            logs['resume_info'][direction]['global_step'] = 0
+            logs['loss'][direction] = {}
+            logs['loss'][direction][outer_it] = {}
+            logs['loss'][direction][outer_it][stage]={}
+            for phase in ['train', 'val']:
+                logs['loss'][direction][outer_it][stage][phase] = {}
+                for i in range(1, num_intervals+1):
+                    logs['loss'][direction][outer_it][stage][phase][i] = []
 
-    for direction in ['forward', 'backward']:
-        logs['resume_info'][direction] = {}
-        logs['resume_info'][direction]['starting_outer_it'] = 1
-        logs['resume_info'][direction]['starting_stage'] = 1
-        logs['resume_info'][direction]['starting_inner_it'] = 1
-        logs['resume_info'][direction]['global_step'] = 0 #probably redundant
-        logs['loss'][direction] = {}
-        logs['loss'][direction][outer_it] = {}
-        logs['loss'][direction][outer_it][stage]={}
-        for phase in ['train', 'val']:
-            logs['loss'][direction][outer_it][stage][phase] = {}
-            for i in range(1, num_intervals+1):
-                logs['loss'][direction][outer_it][stage][phase][i] = []
+    elif train_method == 'joint':
+        logs['resume_info']['starting_outer_it'] = outer_it
+        logs['resume_info']['starting_inner_it'] = 1
+        logs['resume_info']['global_step'] = 0 
+        logs['loss'][outer_it]={}
+        logs['loss'][outer_it]['val']=[]
+        logs['loss'][outer_it]['train']={}
+        for i in range(1, num_intervals+1):
+            logs['loss'][outer_it]['train'][i]=[]
+
     return logs
 
 #create a new class that inherits the class of all models in reduced level j and can perform sampling.
@@ -258,7 +270,7 @@ class MultiStageRunner():
                 #we need to initialize the logs
                 print('New option reduction levels less than loaded reduction levels.')
                 print('We are entering a new reduction cycle.')
-                self.logs = initialise_logs(self.max_num_intervals, self.reduction_levels)
+                self.logs = initialise_logs(opt.train_method, self.max_num_intervals, self.reduction_levels)
             else:
                 print('New option reduction levels same as the loaded reduction levels')
                 print('We are either resuming training or using the loaded model for sampling.')
@@ -277,15 +289,20 @@ class MultiStageRunner():
                     self.reduce_outer_it_in_sampling = 0
 
         else:
-            self.logs = initialise_logs(self.max_num_intervals, self.reduction_levels)
+            self.logs = initialise_logs(opt.train_method, self.max_num_intervals, self.reduction_levels)
         
         #every should be read/written from/to self.logs from now on.
-        self.starting_outer_it = self.logs['resume_info']['forward']['starting_outer_it']
-        self.starting_stage = self.logs['resume_info']['forward']['starting_stage']
-        self.skip_backward = True if self.logs['resume_info']['backward']['starting_stage'] > self.logs['resume_info']['forward']['starting_stage'] else False
-        self.global_step = self.logs['resume_info']['forward']['global_step']
-        self.starting_inner_it = {'forward': self.logs['resume_info']['forward']['starting_inner_it'],
+        if opt.train_method == 'alternate':
+            self.starting_outer_it = self.logs['resume_info']['forward']['starting_outer_it']
+            self.starting_stage = self.logs['resume_info']['forward']['starting_stage']
+            self.skip_backward = True if self.logs['resume_info']['backward']['starting_stage'] > self.logs['resume_info']['forward']['starting_stage'] else False
+            self.global_step = self.logs['resume_info']['forward']['global_step']
+            self.starting_inner_it = {'forward': self.logs['resume_info']['forward']['starting_inner_it'],
                                   'backward': self.logs['resume_info']['backward']['starting_inner_it']}
+        elif opt.train_method == 'joint':
+            self.starting_outer_it = self.logs['resume_info']['starting_outer_it']
+            self.starting_inner_it = self.logs['resume_info']['starting_inner_it']
+            self.global_step = self.logs['resume_info']['global_step']
 
         self.losses = self.logs['loss']
         print(self.losses.keys())
@@ -354,6 +371,7 @@ class MultiStageRunner():
             policy_impt = freeze_policy(policy_impt)
             xs, zs, _ = dyn.sample_traj(ts, policy_impt, corrector=None)
 
+
         #print('generate train data from [{}]!'.format(util.red('sampling')))
         #assert xs.shape[0] == opt.samp_bs
         #assert xs.shape[1] == len(ts)
@@ -361,82 +379,18 @@ class MultiStageRunner():
         gc.collect()
         return xs, zs, ts
     
-    def compute_val_loss(self, opt, inter_pq_s, discretisation):
-        #validation start
-        freeze_policy(self.z_f)
-        freeze_policy(self.z_b)
+    def convergence_status_to_probs(self, status, k=2):
+        n = len(status.keys())
+        s = sum([status[key] for key in status.keys()])
+        a = k / (s + k*(n-s))
+        probs = {}
+        for key in status.keys():
+            if status[key] == 1:
+                probs[key] = a/k
+            else:
+                probs[key] = a
+        return probs
 
-        #*** I need to switch z_f and z_b to the ema weights.
-
-        intervals = list(inter_pq_s.keys()).copy()
-        forward_loss, backward_loss = {}, {}
-        for interval_key in intervals:
-            p, q = inter_pq_s[interval_key]
-
-            interval_dyn = sde.build(opt, p, q)
-            ts = torch.linspace(p.time, q.time, discretisation)
-            new_dt = ts[1]-ts[0]
-            interval_dyn.dt = new_dt
-            ts = ts.to(opt.device)
-
-            loss = self.compute_interval_val_loss(opt, 'forward', interval_dyn, ts)
-            forward_loss[str(interval_key+1)] = loss
-
-            loss = self.compute_interval_val_loss(opt, 'backward', interval_dyn, ts)
-            backward_loss[str(interval_key+1)] = loss
-
-        #validation end
-        activate_policy(self.z_f)
-        activate_policy(self.z_b)
-
-        return {'forward_loss':forward_loss, 'backward_loss':backward_loss}
-
-    def compute_interval_val_loss(self, opt, direction, dyn, ts):
-        policy_opt, policy_impt = {
-            'forward':  [self.z_f, self.z_b], # train forward, sample from backward
-            'backward': [self.z_b, self.z_f], # train backward, sample from forward
-        }.get(direction)
-
-        batch_x = opt.samp_bs
-        batch_t = ts.size(0)
-
-        losses = []
-        
-        if hasattr(dyn.p, 'num_sample'):
-            val_batches = int(opt.val_dataset_size * dyn.p.num_sample / dyn.p.batch_size)
-        else:
-            val_batches = opt.val_batches
-            
-        for _ in range(val_batches): #number of batches in the validation dataset.
-            xs, zs_impt, ts_ = self.sample_train_data(opt, policy_impt, dyn, ts)
-            xs.requires_grad_(True)
-            xs = util.flatten_dim01(xs)
-            zs_impt = util.flatten_dim01(zs_impt)
-            ts_ = ts_.repeat(batch_x)
-        
-            assert xs.shape[0] == ts_.shape[0]
-            assert zs_impt.shape[0] == ts_.shape[0]
-
-            xs = xs.to(opt.device)
-            zs_impt = zs_impt.to(opt.device)
-
-            loss, zs = compute_sb_nll_alternate_train(
-                    opt, dyn, ts_, xs, zs_impt, policy_opt, return_z=True
-                )
-            
-            assert not torch.isnan(loss)
-            
-            #mem = float(torch.cuda.memory_allocated() / (1024 * 1024))
-            #print("memory allocated:", mem, "MiB")
-            
-            losses.append(loss.item()) #important -> loss.item() 
-
-            '''All loss tensors which are saved outside of the optimization cycle (i.e. outside the for g_iter in range(generator_iters) loop) 
-            need to be detached from the graph. Otherwise, you are keeping all previous computation graphs in memory.'''
-        
-        #return the mean validation loss in that interval
-        return np.mean(losses)
-    
     #This is what we should use to assess convergence in the alternating training procedure
     def compute_level_contribution_to_ll(self, opt, inter_pq_s, discretisation): 
         num_batches = 10
@@ -477,18 +431,6 @@ class MultiStageRunner():
 
         average_total_increment /= num_batches
         return average_total_increment
-
-    def convergence_status_to_probs(self, status, k=2):
-        n = len(status.keys())
-        s = sum([status[key] for key in status.keys()])
-        a = k / (s + k*(n-s))
-        probs = {}
-        for key in status.keys():
-            if status[key] == 1:
-                probs[key] = a/k
-            else:
-                probs[key] = a
-        return probs
 
     def alternating_policy_update(self, opt, direction, interval_key, 
                                              policy_impt, policy_opt, outer_it,
@@ -607,8 +549,9 @@ class MultiStageRunner():
             
             if self.global_step % opt.inner_it_save_freq == 0 and self.global_step !=0:
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
-                util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, stage_num, inner_it)
-                util.save_logs(opt, self, outer_it, stage_num, inner_it)
+                save_name = '%d_%d_%d' % (outer_it, stage_num, inner_it)
+                util.multi_SBP_save_checkpoint(opt, self, keys, save_name)
+                util.save_logs(opt, self, save_name)
             
 
             # We need to add the validation here. But let's skip it for the time being. 
@@ -619,30 +562,25 @@ class MultiStageRunner():
         self.starting_inner_it[direction] = 1
         self.logs['resume_info'][direction]['starting_inner_it'] = 1
 
-    def sb_outer_alternating_iteration(self, opt,
-                                            optimizer_f, optimizer_b, 
-                                            sched_f, sched_b, 
-                                            inter_pq_s, val_inter_pq_s, discretisation, 
-                                            tr_steps, outer_it):
-
-        start_inner_it = self.starting_inner_it
-        early_stopper = MultistageEarlyStoppingCallback(patience=opt.stopping_patience, loss_values=self.losses['outer_it_%d' % outer_it]['val'])
+    def sb_joint_outer_iteration(self, opt, optimizer_f, optimizer_b, sched_f, sched_b, 
+                                 inter_pq_s, val_inter_pq_s, discretisation, 
+                                 tr_steps, outer_it):
+        
+        sorted_keys = sorted(list(inter_pq_s.keys()))
+        start_inner_it = self.starting_inner_it.copy()
+        early_stopper = EarlyStoppingCallback(patience=opt.stopping_patience, loss_values=self.losses[outer_it]['val'])
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
             stop = early_stopper()
             if stop or inner_it == opt.num_inner_iterations:
                 #save the checkpoint before moving to the next outer iteration or finishing training.
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
-                util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
+                save_name = '%d_%d' % (outer_it, inner_it)
+                util.multi_SBP_save_checkpoint(opt, self, keys, save_name)
+                util.save_logs(opt, self, save_name)
                 break
-            
-            status = early_stopper.get_stages_status()
-            probs = self.convergence_status_to_probs(status, opt.reweighting_factor)
-            intervals = list(probs.keys())
-                
-            weights = [probs[key] for key in intervals]
-            interval_key = random.choices(intervals, weights=weights, k=1)[0]
-            
-            interval_key = int(interval_key)-1
+
+            interval_key = random.choice(sorted_keys)
+            print(interval_key)
             p, q = inter_pq_s[interval_key]
 
             interval_dyn = sde.build(opt, p, q)
@@ -651,17 +589,37 @@ class MultiStageRunner():
             interval_dyn.dt = new_dt
             ts = ts.to(opt.device)
 
-            losses = self.alternating_policy_update(opt, 'forward', interval_dyn, ts, tr_steps=tr_steps)
-            f_loss = torch.mean(torch.tensor(losses)).item()
-            self.losses['outer_it_%d' % outer_it]['train']['forward'][str(interval_key+1)].append(f_loss)
+            optimizer_f.zero_grad()
+            optimizer_b.zero_grad()
 
-            losses = self.alternating_policy_update(opt, 'backward', interval_dyn, ts, tr_steps=tr_steps)
-            b_loss = torch.mean(torch.tensor(losses)).item()
-            self.losses['outer_it_%d' % outer_it]['train']['backward'][str(interval_key+1)].append(b_loss)
+            xs_f, zs_f, x_term_f = interval_dyn.sample_traj(ts, self.z_f, save_traj=True)
+            batch_x = xs_f.size(0)
+            xs_f = util.flatten_dim01(xs_f)
+            zs_f = util.flatten_dim01(zs_f)
+            ts_ = ts.repeat(batch_x)
 
-            if inner_it % opt.inner_it_save_freq == 0 and inner_it !=0:
+            if not(self.last_level and interval_key == sorted_keys[-1]):
+                x_term_f = None
+
+            loss = compute_sb_nll_joint_increment(opt, interval_dyn, ts_, xs_f, zs_f, self.z_b, x_term_f=x_term_f)
+            loss.backward()
+
+            optimizer_f.step()
+            optimizer_b.step()
+
+            if sched_f is not None: sched_f.step()
+            if sched_b is not None: sched_b.step()
+
+            loss_val = loss.item()
+            self.losses[outer_it]['train'][interval_key+1].append(loss_val)
+            train_steps = len(self.losses[outer_it]['train'][interval_key+1])
+            self.writer.add_scalar('outer_it_%d_train_loss_%d' % (outer_it, (interval_key+1)), loss_val, global_step=train_steps)
+
+            if self.global_step % opt.inner_it_save_freq == 0 and inner_it !=0:
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
-                util.multi_SBP_save_checkpoint(opt, self, keys, outer_it, inner_it)
+                save_name = '%d_%d' % (outer_it, inner_it)
+                util.multi_SBP_save_checkpoint(opt, self, keys, save_name)
+                util.save_logs(opt, self, save_name)
 
             if inner_it % opt.sampling_freq == 0:
                 with torch.no_grad():
@@ -673,7 +631,7 @@ class MultiStageRunner():
                 if img_dataset:
                     sample_imgs =  sample.cpu()
                     grid_images = torchvision.utils.make_grid(sample_imgs, normalize=True, scale_each=True)
-                    self.writer.add_image('samples -- outer_it:%d - inner_it:%d' % (outer_it, inner_it), grid_images, self.global_step)
+                    self.writer.add_image('outer_it:%d - inner_it:%d' % (outer_it, inner_it), grid_images, self.global_step)
                 else:
                     problem_name = opt.problem_name
                         
@@ -683,34 +641,65 @@ class MultiStageRunner():
                     self.writer.add_image('samples and ODE vector field, outer_it:%d - inner_it:%d' % (outer_it, inner_it), img)
             
             self.global_step += 1
-
-            self.writer.add_scalar('outer_it_%d_train_forward_loss_%d' % (outer_it, (interval_key+1)), f_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['train']['forward'][str(interval_key+1)]))
-            self.writer.add_scalar('outer_it_%d_train_backward_loss_%d' % (outer_it, (interval_key+1)), b_loss, global_step=len(self.losses['outer_it_%d' % outer_it]['train']['backward'][str(interval_key+1)]))
-
-            self.z_f.starting_inner_it = torch.tensor(inner_it)
             self.starting_inner_it = inner_it
-            self.z_f.global_step = torch.tensor(self.global_step)
-            self.z_f.register_buffer('outer_it_%d_train_forward_loss_%d' % (outer_it, (interval_key+1)), torch.tensor(self.losses['outer_it_%d' % outer_it]['train']['forward'][str(interval_key+1)]))
-            self.z_f.register_buffer('outer_it_%d_train_backward_loss_%d' % (outer_it, (interval_key+1)), torch.tensor(self.losses['outer_it_%d' % outer_it]['train']['backward'][str(interval_key+1)]))
+
+            self.logs['resume_info']['starting_inner_it'] = inner_it
+            self.logs['resume_info']['global_step'] = self.global_step
             
             if inner_it % opt.val_freq == 0:
                 #print('Validation starts...')
-                val_loss = self.compute_val_loss(opt, val_inter_pq_s, discretisation)
-                val_forward_loss = val_loss['forward_loss']
-                val_backward_loss = val_loss['backward_loss']
+                freeze_policy(self.z_f)
+                freeze_policy(self.z_b)
                 
-                for interval_key in val_inter_pq_s.keys():
-                    str_key = str(interval_key+1)
-                    self.writer.add_scalar('outer_it_%d_val_forward_loss_%s' % (outer_it, str_key), val_forward_loss[str_key], global_step=len(self.losses['outer_it_%d' % outer_it]['val']['forward'][str_key]))
-                    self.writer.add_scalar('outer_it_%d_val_backward_loss_%s' % (outer_it, str_key), val_backward_loss[str_key], global_step=len(self.losses['outer_it_%d' % outer_it]['val']['backward'][str_key]))
-                    self.z_f.register_buffer('outer_it_%d_val_forward_loss_%s' % (outer_it, str_key), torch.tensor(self.losses['outer_it_%d' % outer_it]['val']['forward'][str_key]))
-                    self.z_f.register_buffer('outer_it_%d_val_backward_loss_%s' % (outer_it, str_key), torch.tensor(self.losses['outer_it_%d' % outer_it]['val']['backward'][str_key]))
-                    early_stopper.add_stage_value(val_forward_loss[str_key], 'forward', str_key)
-                    early_stopper.add_stage_value(val_backward_loss[str_key], 'backward', str_key)
+                val_loss = self.compute_level_contribution_to_ll(opt, val_inter_pq_s, discretisation)
+                self.losses[outer_it]['val'].append(val_loss)
+                val_steps = len(self.losses[outer_it]['val'])
+                self.writer.add_scalar('outer_it_%d_val_loss' % outer_it, val_loss, global_step=val_steps)
+
+                activate_policy(self.z_f)
+                activate_policy(self.z_b)
+
         
         #reset after the end of the outer iteration.
         self.starting_inner_it = 1
-        self.z_f.starting_inner_it = torch.tensor(self.starting_inner_it)
+        self.logs['resume_info']['starting_inner_it'] = self.starting_inner_it
+
+    def sb_joint_train(self, opt):
+        policy_f, policy_b = self.z_f, self.z_b
+        policy_f = activate_policy(policy_f)
+        policy_b = activate_policy(policy_b)
+        optimizer_f, _, sched_f = self.get_optimizer_ema_sched(policy_f)
+        optimizer_b, _, sched_b = self.get_optimizer_ema_sched(policy_b)
+        outer_iterations = self.num_outer_iterations 
+        tr_steps = opt.policy_updates
+
+        starting_outer_it = self.starting_outer_it.copy()
+        for outer_it in range(starting_outer_it, outer_iterations+1):
+            num_intervals = self.max_num_intervals//2**(outer_it-1)
+            
+            inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
+                                                                    self.level_min_time, self.level_max_time, num_intervals,
+                                                                    discretisation_policy=opt.discretisation_policy, outer_it=outer_it, phase='train')
+            val_inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
+                                                                    self.level_min_time, self.level_max_time, num_intervals, 
+                                                                    discretisation_policy=opt.discretisation_policy, outer_it=outer_it, phase='val')
+            
+            new_discretisation = self.compute_discretisation(opt, outer_it)
+            
+            if outer_it not in self.losses.keys():
+                self.logs['loss'][outer_it]={}
+                self.logs['loss'][outer_it]['val']=[]
+                self.logs['loss'][outer_it]['train']={}
+                for i in range(1, num_intervals+1):
+                    self.logs['loss'][outer_it]['train'][i]=[]
+
+            self.sb_joint_outer_iteration(opt, optimizer_f, 
+                                    optimizer_b, sched_f, sched_b, 
+                                    inter_pq_s, val_inter_pq_s, new_discretisation, 
+                                    tr_steps, outer_it)
+            
+            self.logs['resume_info']['starting_outer_it']+=1
+            self.starting_outer_it += 1
 
     def sb_alterating_train(self, opt):
         #assert not util.is_image_dataset(opt)
@@ -761,8 +750,9 @@ class MultiStageRunner():
                         self.logs['resume_info'][direction]['starting_inner_it'] = 1
 
                     keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
-                    util.multi_SBP_save_checkpoint(opt, self, keys, outer_it+1, 1, 1)
-                    util.save_logs(opt, self, outer_it+1, 1, 1)
+                    save_name = '%d_%d_%d' % (outer_it+1, 1, 1)
+                    util.multi_SBP_save_checkpoint(opt, self, keys, save_name)
+                    util.save_logs(opt, self, save_name)
                     break
                     
                 if self.skip_backward and outer_it == self.starting_outer_it and stage_num == starting_stage:

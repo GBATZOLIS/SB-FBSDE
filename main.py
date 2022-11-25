@@ -37,7 +37,10 @@ def main(opt):
         
         elif opt.training_scheme == 'divideNconquer':
             run = MultiStageRunner(opt)
-            run.sb_alterating_train(opt)
+            if opt.train_method == 'joint':
+                run.sb_joint_train(opt)
+            elif opt.train_method == 'alternate':
+                run.sb_alterating_train(opt)
             
     elif opt.phase == 'test':
         if opt.training_scheme == 'divideNconquer':
