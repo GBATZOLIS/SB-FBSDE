@@ -19,7 +19,7 @@ import util
 from ipdb import set_trace as debug
 import random
 from tqdm import tqdm
-
+import copy
 import matplotlib.pyplot as plt
 
 
@@ -567,7 +567,7 @@ class MultiStageRunner():
                                  tr_steps, outer_it):
         
         sorted_keys = sorted(list(inter_pq_s.keys()))
-        start_inner_it = self.starting_inner_it.copy()
+        start_inner_it = copy.copy(self.starting_inner_it)
         early_stopper = EarlyStoppingCallback(patience=opt.stopping_patience, loss_values=self.losses[outer_it]['val'])
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
             stop = early_stopper()
@@ -674,7 +674,7 @@ class MultiStageRunner():
         outer_iterations = self.num_outer_iterations 
         tr_steps = opt.policy_updates
 
-        starting_outer_it = self.starting_outer_it.copy()
+        starting_outer_it = copy.copy(self.starting_outer_it)
         for outer_it in range(starting_outer_it, outer_iterations+1):
             num_intervals = self.max_num_intervals//2**(outer_it-1)
             
