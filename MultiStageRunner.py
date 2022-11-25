@@ -615,13 +615,14 @@ class MultiStageRunner():
             train_steps = len(self.losses[outer_it]['train'][interval_key+1])
             self.writer.add_scalar('outer_it_%d_train_loss_%d' % (outer_it, (interval_key+1)), loss_val, global_step=train_steps)
 
-            if self.global_step % opt.inner_it_save_freq == 0 and inner_it !=0:
+            if self.global_step % opt.inner_it_save_freq == 0:
                 keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
                 save_name = '%d_%d' % (outer_it, inner_it)
                 util.multi_SBP_save_checkpoint(opt, self, keys, save_name)
                 util.save_logs(opt, self, save_name)
 
-            if inner_it % opt.sampling_freq == 0:
+            if self.global_step % opt.sampling_freq == 0:
+                print('----- sampling -----')
                 with torch.no_grad():
                     sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
                     sample = sample.to('cpu')
