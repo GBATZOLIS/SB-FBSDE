@@ -81,7 +81,7 @@ def set():
     parser.add_argument("--samp-bs",        type=int,                     help="[sb train] batch size for all trajectory sampling purposes")
     parser.add_argument("--num-itr",        type=int,                     help="[sb train] number of training iterations (for each epoch)")
 
-    parser.add_argument("--DSM-warmup",     action="store_true",          help="[dsm warmup train] enable dsm warmup at 1st stage")
+    parser.add_argument("--DSM-warmup",     type=bool, default=False,          help="[dsm warmup train] enable dsm warmup at 1st stage")
     parser.add_argument("--train-bs-x-dsm", type=int,                     help="[dsm warmup train] batch size for sampling data")
     parser.add_argument("--train-bs-t-dsm", type=int,                     help="[dsm warmup train] batch size for sampling timestep")
     parser.add_argument("--num-itr-dsm",    type=int,                     help="[dsm warmup train] number of training iterations for DSM warmup")
