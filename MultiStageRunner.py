@@ -601,6 +601,9 @@ class MultiStageRunner():
             if not(self.last_level and interval_key == sorted_keys[-1]):
                 x_term_f = None
 
+            print(xs_f.device)
+            print(ts_.device)
+
             loss = compute_sb_nll_joint_increment(opt, interval_dyn, ts_, xs_f, zs_f, self.z_b, x_term_f=x_term_f)
             loss.backward()
 
