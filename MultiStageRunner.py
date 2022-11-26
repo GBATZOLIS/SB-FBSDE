@@ -406,6 +406,7 @@ class MultiStageRunner():
                 dyn.dt = new_dt
                 ts = ts.to(opt.device)
 
+                print(i)
                 xs_f, zs_f, x_term_f = dyn.sample_traj(ts, self.z_f, save_traj=True)
                 #xs_f, zs_f, ts_ = self.sample_train_data(opt, self.z_f, dyn, ts)
                 batch_x = xs_f.size(0)
