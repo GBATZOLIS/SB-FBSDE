@@ -406,6 +406,7 @@ class MultiStageRunner():
                 dyn.dt = new_dt
                 ts = ts.to(opt.device)
 
+                print(i)
                 with torch.no_grad():
                     xs_f, zs_f, x_term_f = dyn.sample_traj(ts, self.z_f, save_traj=True)
                 #xs_f, zs_f, ts_ = self.sample_train_data(opt, self.z_f, dyn, ts)
@@ -427,6 +428,10 @@ class MultiStageRunner():
 
                 interval_increment = compute_sb_nll_joint_increment(opt, dyn, ts_, xs_f, zs_f, self.z_b, x_term_f=x_term_f)
                 total_increment += interval_increment.item()
+
+                xs_f=xs_f.detach().cpu()
+                zs_f=zs_f.detach().cpu()
+                x_term_f=x_term_f.detach().cpu()
             
             average_total_increment += total_increment
 
