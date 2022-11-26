@@ -427,9 +427,10 @@ class MultiStageRunner():
                 '''
 
                 
-                print(i)
+                #print(i)
                 with torch.no_grad():
                     xs_f, zs_f, x_term_f = dyn.sample_traj(ts, self.z_f, save_traj=True)
+
                 #xs_f, zs_f, ts_ = self.sample_train_data(opt, self.z_f, dyn, ts)
                 batch_x = xs_f.size(0)
 
@@ -623,7 +624,12 @@ class MultiStageRunner():
             optimizer_f.zero_grad()
             optimizer_b.zero_grad()
 
-            xs_f, zs_f, x_term_f = interval_dyn.sample_traj(ts, self.z_f, save_traj=True)
+            with torch.no_grad():
+                xs_f, zs_f, x_term_f = interval_dyn.sample_traj(ts, self.z_f, save_traj=True)
+            
+            xs_f.requires_grad_(True)
+            zs_f.requires_grad_(True)
+
             batch_x = xs_f.size(0)
             xs_f = util.flatten_dim01(xs_f)
             zs_f = util.flatten_dim01(zs_f)
@@ -631,6 +637,8 @@ class MultiStageRunner():
 
             if not(self.last_level and interval_key == sorted_keys[-1]):
                 x_term_f = None
+            else:
+                x_term_f.requires_grad_(True)
 
             #print(xs_f.device)
             #print(ts_.device)
