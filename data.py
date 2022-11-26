@@ -342,7 +342,7 @@ class PriorSampler: # a dump prior sampler to align with DataSampler
 def setup_loader(dataset, batch_size):
     train_loader = DataLoaderX(dataset, batch_size=batch_size,shuffle=True,num_workers=0,drop_last=True)
     # train_loader = DataLoaderX(dataset, batch_size=batch_size,shuffle=True,num_workers=4, pin_memory=True)
-    print("number of samples: {}".format(len(dataset)))
+    #print("number of samples: {}".format(len(dataset)))
 
     # https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/image_datasets.py#L52-L53
     # https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/train_util.py#L166
