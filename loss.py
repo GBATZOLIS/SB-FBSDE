@@ -27,7 +27,7 @@ def compute_div_gz(opt, dyn, ts, xs, policy, return_zs=False):
     gzs = g_ts*zs
 
     e = sample_e(opt, xs)
-    e_dzdx = torch.autograd.grad(gzs, xs, e, create_graph=True, allow_unused=True)[0]
+    e_dzdx = torch.autograd.grad(gzs, xs, e, create_graph=True)[0]
     
     div_gz = e_dzdx * e
     # approx_div_gz = e_dzdx_e.view(y.shape[0], -1).sum(dim=1)
