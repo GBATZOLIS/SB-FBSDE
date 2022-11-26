@@ -95,11 +95,15 @@ class BaseSDE(metaclass=abc.ABCMeta):
         else:
             x = initial_sample
 
-        apply_trick1, apply_trick2, apply_trick3 = compute_tricks_condition(opt, apply_trick, direction)
-        apply_trick1 = False
+        #disable the tricks
+        #1.) We don't need trick1 because we already move the data to p_start by perturbing slightly->we move to a finite very high snr.
+        #2.) apply_trick2 is used for sampling (denoising step to improve FIDs)
+        #3.) apply_trick3 is used for langevin correction - could also be used for sampling
+        #apply_trick1, apply_trick2, apply_trick3 = compute_tricks_condition(opt, apply_trick, direction)
+        #apply_trick1, apply_trick2, apply_trick3 = False, False, False
 
         # [trick 1] propagate img (x0) by a tiny step
-        if apply_trick1: x = self.propagate_x0_trick(x, policy, direction)
+        #if apply_trick1: x = self.propagate_x0_trick(x, policy, direction)
 
         xs = torch.empty((x.shape[0], len(ts), *x.shape[1:])) if save_traj else None
         zs = torch.empty_like(xs) if save_traj else None
@@ -119,12 +123,13 @@ class BaseSDE(metaclass=abc.ABCMeta):
                 zs[:,t_idx,...]=z
 
             # [trick 2] zero out dw
-            if apply_trick2(t_idx=t_idx): dw = torch.zeros_like(dw)
+            #if apply_trick2(t_idx=t_idx): dw = torch.zeros_like(dw)
+
             x = self.propagate(t, x, z, direction, f=f, dw=dw)
 
-            if corrector is not None:
-                denoise_xT = False # apply_trick3(t_idx=t_idx) # [trick 3] additional denoising step for xT
-                x  = self.corrector_langevin_update(_t ,x, corrector, denoise_xT)
+            #if corrector is not None:
+            #    denoise_xT = False # apply_trick3(t_idx=t_idx) # [trick 3] additional denoising step for xT
+            #    x  = self.corrector_langevin_update(_t , x, corrector, denoise_xT)
 
         x_term = x
 
