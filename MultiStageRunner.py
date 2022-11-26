@@ -431,7 +431,8 @@ class MultiStageRunner():
 
                 xs_f=xs_f.detach().cpu()
                 zs_f=zs_f.detach().cpu()
-                x_term_f=x_term_f.detach().cpu()
+                if x_term_f is not None:
+                    x_term_f=x_term_f.detach().cpu()
             
             average_total_increment += total_increment
 
