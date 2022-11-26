@@ -415,9 +415,9 @@ class MultiStageRunner():
                 xs_f=util.flatten_dim01(xs_f)
                 zs_f=util.flatten_dim01(zs_f)
 
-                ts_=ts_.repeat(batch_x)
-                xs_f=xs_f.to(opt.device)
-                zs_f=zs_f.to(opt.device)
+                ts_=ts.repeat(batch_x)
+                #xs_f=xs_f.to(opt.device)
+                #zs_f=zs_f.to(opt.device)
 
                 if not(self.last_level and key == sorted_keys[-1]):
                     x_term_f = None
@@ -650,16 +650,16 @@ class MultiStageRunner():
             
             if inner_it % opt.val_freq == 0:
                 #print('Validation starts...')
-                freeze_policy(self.z_f)
-                freeze_policy(self.z_b)
+                #freeze_policy(self.z_f)
+                #freeze_policy(self.z_b)
                 with torch.no_grad():
                     val_loss = self.compute_level_contribution_to_ll(opt, val_inter_pq_s, discretisation)
                     self.losses[outer_it]['val'].append(val_loss)
                     val_steps = len(self.losses[outer_it]['val'])
                     self.writer.add_scalar('outer_it_%d_val_loss' % outer_it, val_loss, global_step=val_steps)
 
-                activate_policy(self.z_f)
-                activate_policy(self.z_b)
+                #activate_policy(self.z_f)
+                #activate_policy(self.z_b)
 
         
         #reset after the end of the outer iteration.
