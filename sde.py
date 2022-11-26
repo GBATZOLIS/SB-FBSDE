@@ -105,7 +105,7 @@ class BaseSDE(metaclass=abc.ABCMeta):
         # [trick 1] propagate img (x0) by a tiny step
         #if apply_trick1: x = self.propagate_x0_trick(x, policy, direction)
 
-        xs = torch.empty((x.shape[0], len(ts), *x.shape[1:])) if save_traj else None
+        xs = torch.empty((x.shape[0], len(ts), *x.shape[1:]), device=self.device) if save_traj else None
         zs = torch.empty_like(xs) if save_traj else None
 
         # don't use tqdm for fbsde since it'll resample every itr
