@@ -654,11 +654,11 @@ class MultiStageRunner():
                 #print('Validation starts...')
                 freeze_policy(self.z_f)
                 freeze_policy(self.z_b)
-                
-                val_loss = self.compute_level_contribution_to_ll(opt, val_inter_pq_s, discretisation)
-                self.losses[outer_it]['val'].append(val_loss)
-                val_steps = len(self.losses[outer_it]['val'])
-                self.writer.add_scalar('outer_it_%d_val_loss' % outer_it, val_loss, global_step=val_steps)
+                with torch.no_grad():
+                    val_loss = self.compute_level_contribution_to_ll(opt, val_inter_pq_s, discretisation)
+                    self.losses[outer_it]['val'].append(val_loss)
+                    val_steps = len(self.losses[outer_it]['val'])
+                    self.writer.add_scalar('outer_it_%d_val_loss' % outer_it, val_loss, global_step=val_steps)
 
                 activate_policy(self.z_f)
                 activate_policy(self.z_b)
