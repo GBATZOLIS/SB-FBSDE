@@ -137,7 +137,7 @@ def initialise_logs(train_method, num_intervals, reduction_levels):
             logs['resume_info'][direction]['starting_outer_it'] = 1
             logs['resume_info'][direction]['starting_stage'] = 1
             logs['resume_info'][direction]['starting_inner_it'] = 1
-            logs['resume_info'][direction]['global_step'] = 0
+            logs['resume_info'][direction]['global_step'] = 1
             logs['loss'][direction] = {}
             logs['loss'][direction][outer_it] = {}
             logs['loss'][direction][outer_it][stage]={}
@@ -149,7 +149,7 @@ def initialise_logs(train_method, num_intervals, reduction_levels):
     elif train_method == 'joint':
         logs['resume_info']['starting_outer_it'] = outer_it
         logs['resume_info']['starting_inner_it'] = 1
-        logs['resume_info']['global_step'] = 0 
+        logs['resume_info']['global_step'] = 1 
         logs['loss'][outer_it]={}
         logs['loss'][outer_it]['val']=[]
         logs['loss'][outer_it]['train']={}
@@ -536,24 +536,6 @@ class MultiStageRunner():
         for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
             stop = early_stopper()
             if stop or inner_it == opt.num_inner_iterations:
-                #print samples at the end of every stage
-                with torch.no_grad():
-                    sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
-                    sample = sample.to('cpu')
-                    #gt_sample = inter_pq_s[0][0].sample()
-                
-                img_dataset = util.is_image_dataset(opt)
-                if img_dataset:
-                    sample_imgs =  sample.cpu()
-                    grid_images = torchvision.utils.make_grid(sample_imgs, nrow=int(np.sqrt(sample_imgs.size(0))), normalize=True, scale_each=True)
-                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), grid_images)
-                else:
-                    problem_name = opt.problem_name
-                    p, q = inter_pq_s[0]
-                    dyn = sde.build(opt, p, q)
-                    img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
-                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), img)
-
                 break
 
             status = early_stopper.get_stages_status()
@@ -584,6 +566,24 @@ class MultiStageRunner():
                 save_name = '%d_%d_%d' % (outer_it, stage_num, inner_it)
                 util.multi_SBP_save_checkpoint(opt, self, keys, save_name)
                 util.save_logs(opt, self, save_name)
+
+                #print samples for every saved checkpoint
+                with torch.no_grad():
+                    sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
+                    sample = sample.to('cpu')
+                    #gt_sample = inter_pq_s[0][0].sample()
+                
+                img_dataset = util.is_image_dataset(opt)
+                if img_dataset:
+                    sample_imgs =  sample.cpu()
+                    grid_images = torchvision.utils.make_grid(sample_imgs, nrow=int(np.sqrt(sample_imgs.size(0))), normalize=True, scale_each=True)
+                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), grid_images)
+                else:
+                    problem_name = opt.problem_name
+                    p, q = inter_pq_s[0]
+                    dyn = sde.build(opt, p, q)
+                    img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
+                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), img)
             
 
             # We need to add the validation here. But let's skip it for the time being. 
