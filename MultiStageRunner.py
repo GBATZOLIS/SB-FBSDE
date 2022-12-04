@@ -1060,8 +1060,6 @@ class MultiStageRunner():
 
         sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
         
-        xs = torch.empty((x.size(0), (discretisation-1)*num_intervals+1, *x.shape[1:])) if save_traj else None
-        
         for i, key in tqdm(enumerate(sorted_keys)):
             p, q = inter_pq_s[key]
             interval_dyn = sde.build(opt, p, q)
@@ -1074,7 +1072,9 @@ class MultiStageRunner():
             if i==0:
                 if x is None:
                     x = q.sample().to(opt.device)
-            
+
+                xs = torch.empty((x.size(0), (discretisation-1)*num_intervals+1, *x.shape[1:])) if save_traj else None
+                
                 if save_traj:
                     xs[:,0,::] = x.detach().cpu()
 
