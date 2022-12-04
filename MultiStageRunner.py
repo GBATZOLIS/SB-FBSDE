@@ -1074,11 +1074,11 @@ class MultiStageRunner():
                     x = q.sample().to(opt.device)
 
                 xs = torch.empty((x.size(0), (discretisation-1)*num_intervals+1, *x.shape[1:])) if save_traj else None
-                
+
                 if save_traj:
                     xs[:,0,::] = x.detach().cpu()
 
-            for idx, t in enumerate(ts[::-1]):
+            for idx, t in enumerate(ts[:-1]):
                 if stochastic:
                     f = interval_dyn.f(x, t, direction='forward')
                     backward_policy = self.z_b
