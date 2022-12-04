@@ -179,7 +179,7 @@ class MultistageCombiner():
         log_dir = os.path.join(opt.experiment_path,  'reduction_%d' % opt.reduction_levels, 'samples')
         self.writer = SummaryWriter(log_dir=log_dir)
     
-    def sample(self, save_traj=True, stochastic=True):
+    def sample(self, save_traj=True, stochastic=False):
         levels = sorted(list(self.opts.keys()), reverse=True)
         x = None
         for level in levels:
