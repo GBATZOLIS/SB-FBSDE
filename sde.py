@@ -111,7 +111,7 @@ class BaseSDE(metaclass=abc.ABCMeta):
         # don't use tqdm for fbsde since it'll resample every itr
         _ts = ts if opt.train_method=='joint' else ts #tqdm(ts,desc=util.yellow("Propagating Dynamics..."))
         for idx, t in enumerate(_ts):
-            _t=t if idx==ts.shape[0]-1 else ts[idx+1]
+            #_t=t if idx==ts.shape[0]-1 else ts[idx+1]
 
             f = self.f(x,t,direction)
             z = policy(x,t)
@@ -124,8 +124,9 @@ class BaseSDE(metaclass=abc.ABCMeta):
 
             # [trick 2] zero out dw
             #if apply_trick2(t_idx=t_idx): dw = torch.zeros_like(dw)
-
-            x = self.propagate(t, x, z, direction, f=f, dw=dw)
+            
+            if idx < len(ts)-1:
+                x = self.propagate(t, x, z, direction, f=f, dw=dw)
 
             #if corrector is not None:
             #    denoise_xT = False # apply_trick3(t_idx=t_idx) # [trick 3] additional denoising step for xT

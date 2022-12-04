@@ -640,8 +640,6 @@ class MultiStageRunner():
             else:
                 x_term_f.requires_grad_(True)
 
-            #print(xs_f.device)
-            #print(ts_.device)
 
             loss = compute_sb_nll_joint_increment(opt, interval_dyn, ts_, xs_f, zs_f, self.z_b, x_term_f=x_term_f)
             loss.backward()
@@ -1062,8 +1060,9 @@ class MultiStageRunner():
 
         sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
         
+        xs = torch.empty((x.size(0), (discretisation-1)*num_intervals+1, *x.shape[1:])) if save_traj else None
+        
         for i, key in tqdm(enumerate(sorted_keys)):
-            
             p, q = inter_pq_s[key]
             interval_dyn = sde.build(opt, p, q)
             ts = torch.linspace(p.time, q.time, discretisation)
@@ -1075,13 +1074,11 @@ class MultiStageRunner():
             if i==0:
                 if x is None:
                     x = q.sample().to(opt.device)
+            
+                if save_traj:
+                    xs[:,0,::] = x.detach().cpu()
 
-                xs = torch.empty((x.size(0), discretisation*num_intervals+1, *x.shape[1:])) if save_traj else None
-
-            if save_traj:
-                xs[:,0,::] = x.detach().cpu()
-
-            for idx, t in enumerate(ts):
+            for idx, t in enumerate(ts[::-1]):
                 if stochastic:
                     f = interval_dyn.f(x, t, direction='forward')
                     backward_policy = self.z_b
@@ -1096,7 +1093,7 @@ class MultiStageRunner():
                     x = x + drift * (-interval_dyn.dt)
                 
                 if save_traj:
-                    xs[:,i*discretisation+idx+1,::] = x.detach().cpu()
+                    xs[:,i*(discretisation-1)+idx+1,::] = x.detach().cpu()
             
         return {'trajectory': xs, 'sample': x}
     

@@ -202,7 +202,7 @@ class PerturbedCheckerBoard(CheckerBoard):
         def snr_fn(s):
             return alpha_fn(s)**2/sigma_fn(s)**2
 
-        snr=self.snr
+        snr = self.snr
         alpha = alpha_fn(snr)
         sigma = sigma_fn(snr)
         perturbed_sample = alpha * not_perturbed_sample + sigma * torch.randn_like(not_perturbed_sample)
