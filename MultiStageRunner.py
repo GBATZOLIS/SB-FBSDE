@@ -406,32 +406,9 @@ class MultiStageRunner():
                 dyn.dt = new_dt
                 ts = ts.to(opt.device)
 
-                '''
-                xs_f, zs_f, ts_ = self.sample_train_data(opt, self.z_f, dyn, ts)
-                batch_x = xs_f.size(0)
-
-                xs_f.requires_grad_(True)
-                zs_f.requires_grad_(True)
-                xs_f=util.flatten_dim01(xs_f)
-                zs_f=util.flatten_dim01(zs_f)
-
-                ts_=ts_.repeat(batch_x)
-                xs_f=xs_f.to(opt.device)
-                zs_f=zs_f.to(opt.device)
-
-                if self.last_level and key == sorted_keys[-1]:
-                    x_term_f = xs_f[:,-1,::].clone().to(opt.device)
-                    x_term_f.requires_grad_(True)
-                else:
-                    x_term_f = None
-                '''
-
-                
-                #print(i)
                 with torch.no_grad():
-                    xs_f, zs_f, x_term_f = dyn.sample_traj(ts, self.z_f, save_traj=True)
+                    xs_f, zs_f, x_term_f, orig_x = dyn.sample_traj(ts, self.z_f, save_traj=True, return_original=True)
 
-                #xs_f, zs_f, ts_ = self.sample_train_data(opt, self.z_f, dyn, ts)
                 batch_x = xs_f.size(0)
 
                 xs_f.requires_grad_(True)
@@ -440,24 +417,10 @@ class MultiStageRunner():
                 zs_f=util.flatten_dim01(zs_f)
 
                 ts_=ts.repeat(batch_x)
-                #xs_f=xs_f.to(opt.device)
-                #zs_f=zs_f.to(opt.device)
-
-                if not(self.last_level and key == sorted_keys[-1]):
-                    x_term_f = None
-                else:
-                    x_term_f.requires_grad_(True)
+                x_term_f.requires_grad_(True)
                 
-
-                interval_increment = compute_sb_nll_joint_increment(opt, dyn, ts_, xs_f, zs_f, self.z_b, x_term_f=x_term_f)
+                interval_increment = compute_sb_nll_joint_increment(opt, dyn, ts_, xs_f, zs_f, self.z_b, x_term_f, orig_x)
                 total_increment += interval_increment.item()
-
-                ''''
-                xs_f=xs_f.detach().cpu()
-                zs_f=zs_f.detach().cpu()
-                if x_term_f is not None:
-                    x_term_f=x_term_f.detach().cpu()
-                '''
 
             average_total_increment += total_increment
 
@@ -624,8 +587,8 @@ class MultiStageRunner():
             optimizer_f.zero_grad()
             optimizer_b.zero_grad()
 
-            with torch.no_grad():
-                xs_f, zs_f, x_term_f = interval_dyn.sample_traj(ts, self.z_f, save_traj=True)
+            #with torch.no_grad():
+            xs_f, zs_f, x_term_f, orig_x = interval_dyn.sample_traj(ts, self.z_f, save_traj=True, return_original=True)
             
             xs_f.requires_grad_(True)
             zs_f.requires_grad_(True)
@@ -635,13 +598,12 @@ class MultiStageRunner():
             zs_f = util.flatten_dim01(zs_f)
             ts_ = ts.repeat(batch_x)
 
-            if not(self.last_level and interval_key == sorted_keys[-1]):
-                x_term_f = None
-            else:
-                x_term_f.requires_grad_(True)
+            #if not(self.last_level and interval_key == sorted_keys[-1]):
+            #    x_term_f = None
+            #else:
+            x_term_f.requires_grad_(True)
 
-
-            loss = compute_sb_nll_joint_increment(opt, interval_dyn, ts_, xs_f, zs_f, self.z_b, x_term_f=x_term_f)
+            loss = compute_sb_nll_joint_increment(opt, interval_dyn, ts_, xs_f, zs_f, self.z_b, x_term_f, orig_x)
             loss.backward()
 
             optimizer_f.step()

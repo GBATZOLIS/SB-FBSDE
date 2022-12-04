@@ -78,7 +78,7 @@ class BaseSDE(metaclass=abc.ABCMeta):
             print('trick applied,sigma_min{}'.format(self.sigma_min))
         return x
 
-    def sample_traj(self, ts, policy, corrector=None, apply_trick=True, save_traj=True, initial_sample=None):
+    def sample_traj(self, ts, policy, corrector=None, apply_trick=True, save_traj=True, initial_sample=None, return_original=False):
 
         # first we need to know whether we're doing forward or backward sampling
         opt = self.opt
@@ -91,7 +91,12 @@ class BaseSDE(metaclass=abc.ABCMeta):
         ts = ts if direction=='forward' else torch.flip(ts,dims=[0])
 
         if initial_sample is None:
-            x = init_dist.sample().to(self.device) # [bs, x_dim]
+            if return_original:
+                x, orig_x = init_dist.sample(return_original=True)
+                orig_x = orig_x.to(self.device)
+            else:
+                x = init_dist.sample() # [bs, x_dim]
+            x = x.to(self.device)
         else:
             x = initial_sample
 
@@ -111,7 +116,7 @@ class BaseSDE(metaclass=abc.ABCMeta):
         # don't use tqdm for fbsde since it'll resample every itr
         _ts = ts if opt.train_method=='joint' else ts #tqdm(ts,desc=util.yellow("Propagating Dynamics..."))
         for idx, t in enumerate(_ts):
-            #_t=t if idx==ts.shape[0]-1 else ts[idx+1]
+            #_t=t if idx==ts.shape[0]-1 else ts[idx+1] ->used with the corrector
 
             f = self.f(x,t,direction)
             z = policy(x,t)
@@ -124,9 +129,8 @@ class BaseSDE(metaclass=abc.ABCMeta):
 
             # [trick 2] zero out dw
             #if apply_trick2(t_idx=t_idx): dw = torch.zeros_like(dw)
-            
-            if idx < len(ts)-1:
-                x = self.propagate(t, x, z, direction, f=f, dw=dw)
+
+            x = self.propagate(t, x, z, direction, f=f, dw=dw)
 
             #if corrector is not None:
             #    denoise_xT = False # apply_trick3(t_idx=t_idx) # [trick 3] additional denoising step for xT
@@ -134,7 +138,11 @@ class BaseSDE(metaclass=abc.ABCMeta):
 
         x_term = x
 
-        res = [xs, zs, x_term]
+        if return_original:
+            res = [xs, zs, x_term, orig_x]
+        else:
+            res = [xs, zs, x_term]
+        
         return res
 
     def corrector_langevin_update(self, t, x, corrector, denoise_xT):
