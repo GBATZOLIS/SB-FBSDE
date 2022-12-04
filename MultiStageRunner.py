@@ -1073,7 +1073,7 @@ class MultiStageRunner():
                 if x is None:
                     x = q.sample().to(opt.device)
 
-                xs = torch.empty((x.size(0), (discretisation-1)*num_intervals+1, *x.shape[1:])) if save_traj else None
+                xs = torch.empty((x.size(0), (discretisation)*num_intervals+1, *x.shape[1:])) if save_traj else None
 
                 if save_traj:
                     xs[:,0,::] = x.detach().cpu()
@@ -1093,7 +1093,7 @@ class MultiStageRunner():
                     x = x + drift * (-interval_dyn.dt)
                 
                 if save_traj:
-                    xs[:,i*(discretisation-1)+idx+1,::] = x.detach().cpu()
+                    xs[:,i*(discretisation)+idx+1,::] = x.detach().cpu()
             
         return {'trajectory': xs, 'sample': x}
     
