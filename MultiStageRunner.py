@@ -1078,7 +1078,7 @@ class MultiStageRunner():
                 if save_traj:
                     xs[:,0,::] = x.detach().cpu()
 
-            for idx, t in enumerate(ts[:-1]):
+            for idx, t in enumerate(ts):
                 if stochastic:
                     f = interval_dyn.f(x, t, direction='forward')
                     backward_policy = self.z_b
