@@ -1,4 +1,4 @@
-
+import math
 import torch
 import util
 from ipdb import set_trace as debug
@@ -67,9 +67,8 @@ def compute_sb_nll_joint_increment(opt, dyn, ts, xs_f, zs_f, policy_b, x_term_f,
             exps = torch.ones((x.size(0), points.size(0)))
             for i in range(points.size(0)):
                 reduce_dims = tuple([i+1 for i in range(len(x.shape)-1)])
-                print('reduce_dims: ', reduce_dims)
                 exps[:, i] = -0.5*torch.sum((x - points[i] * alpha)**2, dim=reduce_dims)/sigma**2
-            return -torch.log(N)-d/2*torch.log(2*torch.pi*sigma)+torch.logsumexp(exps, dim=1)
+            return -torch.log(N)-d/2*torch.log(2*math.pi*sigma)+torch.logsumexp(exps, dim=1)
         return loglikelihood_approx_fn
     
     alpha, sigma = dyn.q.get_perturbation_kernel()
