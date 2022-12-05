@@ -345,8 +345,7 @@ class PriorSampler: # a dump prior sampler to align with DataSampler
 
     def sample(self):
         rsample = self.prior.sample([self.batch_size])
-        return rsample.reshape(tuple([rsample.size(0),].extend(self.data_dim))).to(self.device)
-
+        return rsample.reshape(tuple([rsample.size(0),]+self.data_dim)).to(self.device)
 
 
 def setup_loader(dataset, batch_size):
