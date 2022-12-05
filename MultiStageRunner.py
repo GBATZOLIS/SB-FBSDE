@@ -601,7 +601,7 @@ class MultiStageRunner():
 
             #with torch.no_grad():
             xs_f, zs_f, x_term_f, orig_x = interval_dyn.sample_traj(ts, self.z_f, save_traj=True, return_original=True)
-            
+            print(orig_x[0,10:20,10:20])
             xs_f.requires_grad_(True)
             zs_f.requires_grad_(True)
 
