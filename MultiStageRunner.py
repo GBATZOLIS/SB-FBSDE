@@ -430,7 +430,8 @@ class MultiStageRunner():
                     orig_x=None
                 '''
 
-                x_term_f.requires_grad_(True)
+                #x_term_f.requires_grad_(True)
+                x_term_f = None
                 interval_increment = compute_sb_nll_joint_increment(opt, dyn, ts_, xs_f, zs_f, self.z_b, x_term_f, orig_x)
                 total_increment += interval_increment.item()
 
