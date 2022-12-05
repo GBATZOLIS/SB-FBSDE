@@ -419,8 +419,8 @@ class MultiStageRunner():
                 ts_=ts.repeat(batch_x)
 
 
-                if i == len(sorted_keys)-1:
-                    orig_x = None
+                if interval_key == max(sorted_keys) and self.last_level:
+                    orig_x = False
 
                 '''
                 if i == len(sorted_keys)-1:
@@ -614,6 +614,9 @@ class MultiStageRunner():
             #    x_term_f = None
             #else:
             x_term_f.requires_grad_(True)
+
+            if interval_key == max(sorted_keys) and self.last_level:
+                orig_x = False
 
             loss = compute_sb_nll_joint_increment(opt, interval_dyn, ts_, xs_f, zs_f, self.z_b, x_term_f, orig_x)
             loss.backward()
