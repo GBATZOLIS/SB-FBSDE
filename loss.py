@@ -66,7 +66,7 @@ def compute_sb_nll_joint_increment(opt, dyn, ts, xs_f, zs_f, policy_b, x_term_f,
             def loglikelihood_approx_fn(x):
                 N = torch.tensor(points.size(0)) #number of datapoints
                 d = x.size(1) #dimension
-                exps = torch.ones((x.size(0), points.size(0)))
+                exps = torch.ones((x.size(0), points.size(0)), device=x.device)
                 for i in range(points.size(0)):
                     reduce_dims = tuple([i+1 for i in range(len(x.shape)-1)])
                     exps[:, i] = -0.5*torch.sum((x - points[i] * alpha)**2, dim=reduce_dims)/sigma**2
