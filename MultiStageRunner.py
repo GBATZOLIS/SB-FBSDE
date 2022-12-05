@@ -418,6 +418,10 @@ class MultiStageRunner():
 
                 ts_=ts.repeat(batch_x)
 
+
+                if i == len(sorted_keys)-1:
+                    orig_x = None
+
                 '''
                 if i == len(sorted_keys)-1:
                     x_term_f.requires_grad_(True)
