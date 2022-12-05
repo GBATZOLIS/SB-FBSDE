@@ -5,7 +5,7 @@ import torch.distributions as td
 import torchvision.datasets as datasets
 from torchvision import transforms
 from torch.utils.data import DataLoader
-import math
+
 from prefetch_generator import BackgroundGenerator
 
 import util
@@ -35,12 +35,8 @@ def build_prior_sampler(opt, batch_size):
     if opt.problem_name == 'moon-to-spiral':
         # 'moon-to-spiral' uses Moon as prior distribution
         return Moon(batch_size)
-
-    # image+VESDE -> use (sigma_max)^2; otherwise use 1.
-    #cov_coef = opt.sigma_max**2 if (util.is_image_dataset(opt) and not util.use_vp_sde(opt)) else 1.
-    cov_coef=opt.prior_std**2
-    prior = td.MultivariateNormal(torch.zeros(opt.data_dim).to(opt.device), cov_coef*torch.eye(math.prod(opt.data_dim)).to(opt.device))
-    return PriorSampler(prior, batch_size, opt.device)
+    else:
+        return PriorSampler(opt, batch_size, opt.device)
 
 def build_data_sampler(opt, batch_size, phase):
     if util.is_toy_dataset(opt):
@@ -334,16 +330,22 @@ class PerturbedDataSampler(DataSampler): #perturbed dump data sampler
 
 
 class PriorSampler: # a dump prior sampler to align with DataSampler
-    def __init__(self, prior, batch_size, device):
+    def __init__(self, opt, batch_size, device):
+        cov_coef=opt.prior_std**2
+        dim = np.prod(opt.data_dim)
+        prior = td.MultivariateNormal(torch.zeros(dim).to(device), (cov_coef*torch.eye(dim)).to(device))
+
+        self.data_dim = opt.data_dim
         self.prior = prior
         self.batch_size = batch_size
         self.device = device
 
     def log_prob(self, x):
-        return self.prior.log_prob(x).to(self.device)
+        return self.prior.log_prob(x.reshape(x.size(0), -1)).to(self.device)
 
     def sample(self):
-        return self.prior.sample([self.batch_size]).to(self.device)
+        rsample = self.prior.sample([self.batch_size])
+        return rsample.reshape(tuple([rsample.size(0),].extend(self.data_dim))).to(self.device)
 
 
 
