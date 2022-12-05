@@ -417,8 +417,16 @@ class MultiStageRunner():
                 zs_f=util.flatten_dim01(zs_f)
 
                 ts_=ts.repeat(batch_x)
+
+                '''
+                if i == len(sorted_keys)-1:
+                    x_term_f.requires_grad_(True)
+                else:
+                    x_term_f=None
+                    orig_x=None
+                '''
+
                 x_term_f.requires_grad_(True)
-                
                 interval_increment = compute_sb_nll_joint_increment(opt, dyn, ts_, xs_f, zs_f, self.z_b, x_term_f, orig_x)
                 total_increment += interval_increment.item()
 

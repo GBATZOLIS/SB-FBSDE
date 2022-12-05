@@ -58,21 +58,28 @@ def compute_sb_nll_alternate_train(opt, dyn, ts, xs, zs_impt, policy_opt, return
 def compute_sb_nll_joint_increment(opt, dyn, ts, xs_f, zs_f, policy_b, x_term_f, orig_x):
     #x_term_f is None for all levels and intervals apart from the last interval of the last level. last_level_last_stage=True.
     assert xs_f.requires_grad and zs_f.requires_grad
-    assert x_term_f.requires_grad
+    if x_term_f is not None:
+        assert x_term_f.requires_grad
 
-    def get_loglikelihood_approx_fn(points, alpha, sigma):
-        def loglikelihood_approx_fn(x):
-            N = torch.tensor(points.size(0)) #number of datapoints
-            d = x.size(1) #dimension
-            exps = torch.ones((x.size(0), points.size(0)))
-            for i in range(points.size(0)):
-                reduce_dims = tuple([i+1 for i in range(len(x.shape)-1)])
-                exps[:, i] = -0.5*torch.sum((x - points[i] * alpha)**2, dim=reduce_dims)/sigma**2
-            return -torch.log(N)-d/2*torch.log(2*math.pi*sigma)+torch.logsumexp(exps, dim=1)
-        return loglikelihood_approx_fn
-    
-    alpha, sigma = dyn.q.get_perturbation_kernel()
-    loglikelihood_approx_fn = get_loglikelihood_approx_fn(orig_x, alpha, sigma)
+    if orig_x is not None:
+        def get_loglikelihood_approx_fn(points, alpha, sigma):
+            def loglikelihood_approx_fn(x):
+                N = torch.tensor(points.size(0)) #number of datapoints
+                d = x.size(1) #dimension
+                exps = torch.ones((x.size(0), points.size(0)))
+                for i in range(points.size(0)):
+                    reduce_dims = tuple([i+1 for i in range(len(x.shape)-1)])
+                    exps[:, i] = -0.5*torch.sum((x - points[i] * alpha)**2, dim=reduce_dims)/sigma**2
+                return -torch.log(N)-d/2*torch.log(2*math.pi*sigma)+torch.logsumexp(exps, dim=1)
+            return loglikelihood_approx_fn
+        alpha, sigma = dyn.q.get_perturbation_kernel()
+        loglikelihood_approx_fn = get_loglikelihood_approx_fn(orig_x, alpha, sigma)
+    else:
+        def get_loglikelihood_approx_fn(dyn):
+            def loglikelihood_approx_fn(x):
+                return dyn.q.log_prob(x)
+            return loglikelihood_approx_fn
+        loglikelihood_approx_fn = get_loglikelihood_approx_fn(dyn)
 
     batch_x_times_batch_t = ts.size(0)
     with torch.enable_grad():
@@ -80,8 +87,8 @@ def compute_sb_nll_joint_increment(opt, dyn, ts, xs_f, zs_f, policy_b, x_term_f,
         loss = 0.5*(zs_f + zs_b)**2 + div_gz_b
         loss = torch.sum(loss*dyn.dt) / batch_x_times_batch_t
         
-        loss = loss - loglikelihood_approx_fn(x_term_f).mean()
-        #loss = loss - dyn.q.log_prob(x_term_f).mean()
+        if x_term_f is not None:
+            loss -= loglikelihood_approx_fn(x_term_f).mean()
     
     return loss
 
