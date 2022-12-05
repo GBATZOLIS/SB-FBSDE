@@ -73,8 +73,8 @@ def compute_sb_nll_joint_increment(opt, dyn, ts, xs_f, zs_f, policy_b, x_term_f,
                 return -torch.log(N)-d/2*torch.log(2*math.pi*sigma)+torch.logsumexp(exps, dim=1)
             return loglikelihood_approx_fn
         #alpha, sigma = dyn.q.get_perturbation_kernel()
-        alpha = 0.
-        sigma = 1.
+        alpha = torch.tensor(0.)
+        sigma = torch.tensor(1.)
         #print(alpha, sigma)
         loglikelihood_approx_fn = get_loglikelihood_approx_fn(orig_x, alpha, sigma)
     else:
