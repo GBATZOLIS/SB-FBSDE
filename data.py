@@ -162,9 +162,7 @@ class PerturbedCheckerBoard(CheckerBoard):
         self.log_snr_min = opt.log_SNR_min
         self.prior_std = opt.prior_std
 
-    def sample(self):
-        not_perturbed_sample = super().sample()
-
+    def get_perturbation_kernel(self):
         t0 = self.t0
         T = self.T
         log_snr_max = self.log_snr_max
@@ -195,14 +193,20 @@ class PerturbedCheckerBoard(CheckerBoard):
         def t_fn(s):
             return (b0 - torch.sqrt(s)*d0)/(torch.sqrt(s)*c0 - a0)
 
-        def snr_fn(s):
-            return alpha_fn(s)**2/sigma_fn(s)**2
-
-        snr = self.snr
+        snr=self.snr
         alpha = alpha_fn(snr)
         sigma = sigma_fn(snr)
+        return alpha, sigma 
+
+    def sample(self, return_original=False):
+        not_perturbed_sample = super().sample()
+        alpha, sigma = self.get_perturbation_kernel()
         perturbed_sample = alpha * not_perturbed_sample + sigma * torch.randn_like(not_perturbed_sample)
-        return perturbed_sample
+        
+        if return_original:
+            return perturbed_sample, not_perturbed_sample
+        else:
+            return perturbed_sample
 
 class Spiral:
     def __init__(self, opt):
