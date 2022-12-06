@@ -92,9 +92,9 @@ def compute_sb_nll_joint_increment(opt, dyn, ts, xs_f, zs_f, policy_b, x_term_f,
         
         if x_term_f is not None:
             loglikelihood = loglikelihood_approx_fn(x_term_f)
-            print(loglikelihood.size())
+            #print(loglikelihood.size())
             avg_loglikelihood = loglikelihood.mean()
-            print(avg_loglikelihood)
+            #print(avg_loglikelihood)
             loss -= avg_loglikelihood
     
     return loss

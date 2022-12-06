@@ -407,7 +407,7 @@ class MultiStageRunner():
                 ts = ts.to(opt.device)
 
                 with torch.no_grad():
-                    xs_f, zs_f, x_term_f, orig_x = dyn.sample_traj(ts, self.z_f, save_traj=True, return_original=True)
+                    xs_f, zs_f, x_term_f, _ = dyn.sample_traj(ts, self.z_f, save_traj=True, return_original=True)
 
                 batch_x = xs_f.size(0)
 
@@ -419,8 +419,8 @@ class MultiStageRunner():
                 ts_=ts.repeat(batch_x)
 
 
-                if key == max(sorted_keys) and self.last_level:
-                    orig_x = None
+                #if key == max(sorted_keys) and self.last_level:
+                #    orig_x = None
 
                 '''
                 if i == len(sorted_keys)-1:
@@ -432,6 +432,7 @@ class MultiStageRunner():
 
                 #x_term_f.requires_grad_(True)
                 x_term_f = None
+                orig_x = None
                 interval_increment = compute_sb_nll_joint_increment(opt, dyn, ts_, xs_f, zs_f, self.z_b, x_term_f, orig_x)
                 total_increment += interval_increment.item()
 
@@ -601,7 +602,7 @@ class MultiStageRunner():
             optimizer_b.zero_grad()
 
             #with torch.no_grad():
-            xs_f, zs_f, x_term_f, orig_x = interval_dyn.sample_traj(ts, self.z_f, save_traj=True, return_original=True)
+            xs_f, zs_f, x_term_f, _ = interval_dyn.sample_traj(ts, self.z_f, save_traj=True, return_original=True)
             #print(orig_x.size())#32,1,32,32
             #print(orig_x[0,0,10:20,10:20])
             xs_f.requires_grad_(True)
@@ -615,10 +616,13 @@ class MultiStageRunner():
             #if not(self.last_level and interval_key == sorted_keys[-1]):
             #    x_term_f = None
             #else:
-            x_term_f.requires_grad_(True)
+            #x_term_f.requires_grad_(True)
 
-            if interval_key == max(sorted_keys) and self.last_level:
-                orig_x = None
+            #if interval_key == max(sorted_keys) and self.last_level:
+            #    orig_x = None
+            
+            orig_x = None
+            x_term_f = None
 
             loss = compute_sb_nll_joint_increment(opt, interval_dyn, ts_, xs_f, zs_f, self.z_b, x_term_f, orig_x)
             loss.backward()
