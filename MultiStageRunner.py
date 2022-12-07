@@ -596,6 +596,7 @@ class MultiStageRunner():
             
             xs_f.requires_grad_(True)
             zs_f.requires_grad_(True)
+            x_term_f.requires_grad_(True)
 
             batch_x = xs_f.size(0)
             xs_f = util.flatten_dim01(xs_f)
