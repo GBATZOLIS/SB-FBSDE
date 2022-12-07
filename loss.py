@@ -55,7 +55,7 @@ def compute_sb_nll_alternate_train(opt, dyn, ts, xs, zs_impt, policy_opt, return
     
     return loss, zs if return_z else loss
 
-def compute_sb_nll_joint_increment(opt, dyn, ts, xs_f, zs_f, policy_b, x_term_f, orig_x):
+def compute_sb_nll_joint_increment(opt, batch_x, dyn, ts, xs_f, zs_f, policy_b, x_term_f, orig_x):
     #x_term_f is None for all levels and intervals apart from the last interval of the last level. last_level_last_stage=True.
     assert xs_f.requires_grad and zs_f.requires_grad
     if x_term_f is not None:
@@ -84,17 +84,15 @@ def compute_sb_nll_joint_increment(opt, dyn, ts, xs_f, zs_f, policy_b, x_term_f,
             return loglikelihood_approx_fn
         loglikelihood_approx_fn = get_loglikelihood_approx_fn(dyn)
 
-    batch_x_times_batch_t = ts.size(0)
+    #batch_x = x_term_f.size(0)
     with torch.enable_grad():
         div_gz_b, zs_b = compute_div_gz(opt, dyn, ts, xs_f, policy_b, return_zs=True)
         loss = 0.5*(zs_f + zs_b)**2 + div_gz_b
-        loss = torch.sum(loss*dyn.dt) / batch_x_times_batch_t
+        loss = torch.sum(loss*dyn.dt) / batch_x
         
         if x_term_f is not None:
             loglikelihood = loglikelihood_approx_fn(x_term_f)
-            #print(loglikelihood.size())
             avg_loglikelihood = loglikelihood.mean()
-            print(avg_loglikelihood)
             loss -= avg_loglikelihood
     
     return loss

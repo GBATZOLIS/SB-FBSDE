@@ -424,7 +424,7 @@ class MultiStageRunner():
                 else:
                     x_term_f = None
                 
-                interval_increment = compute_sb_nll_joint_increment(opt, dyn, ts_, xs_f, zs_f, self.z_b, x_term_f, orig_x)
+                interval_increment = compute_sb_nll_joint_increment(opt, batch_x, dyn, ts_, xs_f, zs_f, self.z_b, x_term_f, orig_x)
                 total_increment += interval_increment.item()
 
             average_total_increment += total_increment
@@ -604,7 +604,7 @@ class MultiStageRunner():
             if interval_key == max(sorted_keys) and self.last_level:
                 orig_x = None
 
-            loss = compute_sb_nll_joint_increment(opt, interval_dyn, ts_, xs_f, zs_f, self.z_b, x_term_f, orig_x)
+            loss = compute_sb_nll_joint_increment(opt, batch_x, interval_dyn, ts_, xs_f, zs_f, self.z_b, x_term_f, orig_x)
             loss.backward()
 
             optimizer_f.step()
