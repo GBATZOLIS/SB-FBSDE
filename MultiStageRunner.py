@@ -591,12 +591,10 @@ class MultiStageRunner():
             optimizer_f.zero_grad()
             optimizer_b.zero_grad()
 
-            with torch.no_grad():
-                xs_f, zs_f, x_term_f, orig_x = interval_dyn.sample_traj(ts, self.z_f, save_traj=True, return_original=True)
+            xs_f, zs_f, x_term_f, orig_x = interval_dyn.sample_traj(ts, self.z_f, save_traj=True, return_original=True)
             
-            xs_f.requires_grad_(True)
-            zs_f.requires_grad_(True)
-            x_term_f.requires_grad_(True)
+            #xs_f.requires_grad_(True)
+            #zs_f.requires_grad_(True)
 
             batch_x = xs_f.size(0)
             xs_f = util.flatten_dim01(xs_f)
