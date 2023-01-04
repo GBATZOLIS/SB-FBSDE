@@ -211,7 +211,6 @@ class MultistageCombiner():
             self.writer.add_image('%d' % i, img)
             #self.writer.flush()
 
-
 #instruction to myself: Modify this class so that it does the training and the sampling of the reduced unit i which is found in the reduced level j.
 #we need to calculate the maximum and minimum SNRs of reduced unit i. We need to understand if it is the last unit 
 #(in this case the last distribution is the prior and we need to modify the sample generating method)
@@ -432,136 +431,6 @@ class MultiStageRunner():
         average_total_increment /= num_batches
         return average_total_increment
 
-    def alternating_policy_update(self, opt, direction, interval_key, 
-                                             policy_impt, policy_opt, outer_it,
-                                             dyn, ts, stage_num, tr_steps=1):
-
-        optimizer, ema, sched = self.get_optimizer_ema_sched(policy_opt)
-
-        #batch_x = opt.samp_bs
-        #batch_t = ts.size(0)
-        losses = []
-        for it in range(tr_steps):
-            optimizer.zero_grad()
-
-            xs, zs_impt, ts_ = self.sample_train_data(opt, policy_impt, dyn, ts)
-            batch_x = xs.size(0)
-
-            xs.requires_grad_(True)
-            xs=util.flatten_dim01(xs)
-            zs_impt=util.flatten_dim01(zs_impt)
-            ts_=ts_.repeat(batch_x)
-            
-            assert xs.shape[0] == ts_.shape[0]
-            assert zs_impt.shape[0] == ts_.shape[0]
-
-            # -------- compute loss and backprop --------
-            xs=xs.to(opt.device)
-            zs_impt=zs_impt.to(opt.device)
-
-            loss, zs = compute_sb_nll_alternate_train(
-                opt, dyn, ts_, xs, zs_impt, policy_opt, return_z=True
-            )
-            assert not torch.isnan(loss)
-
-            loss.backward()
-            if opt.grad_clip is not None:
-                torch.nn.utils.clip_grad_norm(policy_opt.parameters(), opt.grad_clip)
-            optimizer.step()
-            ema.update()
-            if sched is not None: sched.step()
-            
-            self.losses[direction][outer_it][stage_num]['train'][interval_key].append(loss.item())
-            interval_steps = sum([len(self.losses[direction][outer_it][stage_num]['train'][interval_key]) for stage_num in self.losses[direction][outer_it].keys()])
-            self.writer.add_scalar('outer_it_%d_train_%s_interval_%d' % (outer_it, direction, interval_key), loss, global_step=interval_steps)
-
-            losses.append(loss.item())
-
-        return losses
-
-    def sb_outer_stage(self, opt, direction,
-                               optimizer_f, optimizer_b, 
-                               sched_f, sched_b, 
-                               inter_pq_s, val_inter_pq_s, discretisation, 
-                               tr_steps, outer_it, stage_num):
-
-        policy_opt, policy_impt = {
-            'forward':  [self.z_f, self.z_b], # train forward, sample from backward
-            'backward': [self.z_b, self.z_f], # train backward, sample from forward
-        }.get(direction)
-
-        policy_impt = freeze_policy(policy_impt)
-        policy_opt = activate_policy(policy_opt)
-
-        start_inner_it = self.starting_inner_it[direction]
-
-        #I need to modify the functionality of MultistageEarlyStoppingCallback
-        #we need to replace train with val once we sort out the validation calculation.
-        early_stopper = MultistageEarlyStoppingCallback(patience=opt.stopping_patience, loss_values=self.losses[direction][outer_it][stage_num]['train']) 
-        
-        #we should stop the training when we have convergence of all the intervals 
-        #or we reach the max number of allowed iterations in one training episode
-        for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
-            stop = early_stopper()
-            if stop or inner_it == opt.num_inner_iterations:
-                break
-
-            status = early_stopper.get_stages_status()
-            probs = self.convergence_status_to_probs(status, opt.reweighting_factor)
-            intervals = list(probs.keys())
-            weights = [probs[key] for key in intervals]
-            interval_key = random.choices(intervals, weights=weights, k=1)[0]
-            p, q = inter_pq_s[interval_key-1]
-            interval_dyn = sde.build(opt, p, q)
-            ts = torch.linspace(p.time, q.time, discretisation)
-            new_dt = ts[1]-ts[0]
-            interval_dyn.dt = new_dt
-            ts = ts.to(opt.device)
-
-            losses = self.alternating_policy_update(opt, direction, interval_key, 
-                                                    policy_impt, policy_opt, outer_it,
-                                                    interval_dyn, ts, stage_num, tr_steps=tr_steps)
-            avg_loss = np.mean(losses)
-            early_stopper.add_stage_value(avg_loss, interval_key)
-
-            self.global_step += 1
-            self.logs['resume_info'][direction]['starting_inner_it'] = inner_it
-            self.logs['resume_info'][direction]['global_step'] = self.global_step
-
-            
-            if self.global_step % opt.inner_it_save_freq == 0 and self.global_step !=0:
-                keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
-                save_name = '%d_%d_%d' % (outer_it, stage_num, inner_it)
-                util.multi_SBP_save_checkpoint(opt, self, keys, save_name)
-                util.save_logs(opt, self, save_name)
-
-                #print samples for every saved checkpoint
-                with torch.no_grad():
-                    sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
-                    sample = sample.to('cpu')
-                    #gt_sample = inter_pq_s[0][0].sample()
-                
-                img_dataset = util.is_image_dataset(opt)
-                if img_dataset:
-                    sample_imgs =  sample.cpu()
-                    grid_images = torchvision.utils.make_grid(sample_imgs, nrow=int(np.sqrt(sample_imgs.size(0))), normalize=True, scale_each=True)
-                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), grid_images)
-                else:
-                    problem_name = opt.problem_name
-                    p, q = inter_pq_s[0]
-                    dyn = sde.build(opt, p, q)
-                    img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
-                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), img)
-            
-
-            # We need to add the validation here. But let's skip it for the time being. 
-            # It's the only thing missing. 
-            # We then need to replace the train loss with the val loss in MultistageEarlyStoppingCallback
-
-        #reset after the end of the every stage.
-        self.starting_inner_it[direction] = 1
-        self.logs['resume_info'][direction]['starting_inner_it'] = 1
-
     def sb_joint_outer_iteration(self, opt, optimizer_f, optimizer_b, sched_f, sched_b, 
                                  inter_pq_s, val_inter_pq_s, discretisation, 
                                  tr_steps, outer_it):
@@ -705,6 +574,136 @@ class MultiStageRunner():
             self.logs['resume_info']['starting_outer_it']+=1
             self.starting_outer_it += 1
 
+    def alternating_policy_update(self, opt, direction, interval_key, 
+                                             policy_impt, policy_opt, outer_it,
+                                             dyn, ts, stage_num, tr_steps=1):
+
+        optimizer, ema, sched = self.get_optimizer_ema_sched(policy_opt)
+
+        #batch_x = opt.samp_bs
+        #batch_t = ts.size(0)
+        losses = []
+        for it in range(tr_steps):
+            optimizer.zero_grad()
+
+            xs, zs_impt, ts_ = self.sample_train_data(opt, policy_impt, dyn, ts)
+            batch_x = xs.size(0)
+
+            xs.requires_grad_(True)
+            xs=util.flatten_dim01(xs)
+            zs_impt=util.flatten_dim01(zs_impt)
+            ts_=ts_.repeat(batch_x)
+            
+            assert xs.shape[0] == ts_.shape[0]
+            assert zs_impt.shape[0] == ts_.shape[0]
+
+            # -------- compute loss and backprop --------
+            xs=xs.to(opt.device)
+            zs_impt=zs_impt.to(opt.device)
+
+            loss, zs = compute_sb_nll_alternate_train(
+                opt, dyn, ts_, xs, zs_impt, policy_opt, return_z=True
+            )
+            assert not torch.isnan(loss)
+
+            loss.backward()
+            if opt.grad_clip is not None:
+                torch.nn.utils.clip_grad_norm(policy_opt.parameters(), opt.grad_clip)
+            optimizer.step()
+            ema.update()
+            if sched is not None: sched.step()
+            
+            self.losses[direction][outer_it][stage_num]['train'][interval_key].append(loss.item())
+            interval_steps = sum([len(self.losses[direction][outer_it][stage_num]['train'][interval_key]) for stage_num in self.losses[direction][outer_it].keys()])
+            self.writer.add_scalar('outer_it_%d_train_%s_interval_%d' % (outer_it, direction, interval_key), loss, global_step=interval_steps)
+
+            losses.append(loss.item())
+
+        return losses
+
+    def sb_outer_stage(self, opt, direction,
+                               optimizer_f, optimizer_b, 
+                               sched_f, sched_b, 
+                               inter_pq_s, val_inter_pq_s, discretisation, 
+                               tr_steps, outer_it, stage_num):
+
+        policy_opt, policy_impt = {
+            'forward':  [self.z_f, self.z_b], # train forward, sample from backward
+            'backward': [self.z_b, self.z_f], # train backward, sample from forward
+        }.get(direction)
+
+        policy_impt = freeze_policy(policy_impt)
+        policy_opt = activate_policy(policy_opt)
+
+        start_inner_it = self.starting_inner_it[direction]
+
+        #I need to modify the functionality of MultistageEarlyStoppingCallback
+        #we need to replace train with val once we sort out the validation calculation.
+        early_stopper = MultistageEarlyStoppingCallback(patience=opt.stopping_patience, loss_values=self.losses[direction][outer_it][stage_num]['train']) 
+        
+        #we should stop the training when we have convergence of all the intervals 
+        #or we reach the max number of allowed iterations in one training episode
+        for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
+            stop = early_stopper()
+            if stop or inner_it == opt.num_inner_iterations:
+                break
+
+            status = early_stopper.get_stages_status()
+            probs = self.convergence_status_to_probs(status, opt.reweighting_factor)
+            intervals = list(probs.keys())
+            weights = [probs[key] for key in intervals]
+            interval_key = random.choices(intervals, weights=weights, k=1)[0]
+            p, q = inter_pq_s[interval_key-1]
+            interval_dyn = sde.build(opt, p, q)
+            ts = torch.linspace(p.time, q.time, discretisation)
+            new_dt = ts[1]-ts[0]
+            interval_dyn.dt = new_dt
+            ts = ts.to(opt.device)
+
+            losses = self.alternating_policy_update(opt, direction, interval_key, 
+                                                    policy_impt, policy_opt, outer_it,
+                                                    interval_dyn, ts, stage_num, tr_steps=tr_steps)
+            avg_loss = np.mean(losses)
+            early_stopper.add_stage_value(avg_loss, interval_key)
+
+            self.global_step += 1
+            self.logs['resume_info'][direction]['starting_inner_it'] = inner_it
+            self.logs['resume_info'][direction]['global_step'] = self.global_step
+
+            
+            if self.global_step % opt.inner_it_save_freq == 0 and self.global_step !=0:
+                keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
+                save_name = '%d_%d_%d' % (outer_it, stage_num, inner_it)
+                util.multi_SBP_save_checkpoint(opt, self, keys, save_name)
+                util.save_logs(opt, self, save_name)
+
+                #print samples for every saved checkpoint
+                with torch.no_grad():
+                    sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
+                    sample = sample.to('cpu')
+                    #gt_sample = inter_pq_s[0][0].sample()
+                
+                img_dataset = util.is_image_dataset(opt)
+                if img_dataset:
+                    sample_imgs =  sample.cpu()
+                    grid_images = torchvision.utils.make_grid(sample_imgs, nrow=int(np.sqrt(sample_imgs.size(0))), normalize=True, scale_each=True)
+                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), grid_images)
+                else:
+                    problem_name = opt.problem_name
+                    p, q = inter_pq_s[0]
+                    dyn = sde.build(opt, p, q)
+                    img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
+                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), img)
+            
+
+            # We need to add the validation here. But let's skip it for the time being. 
+            # It's the only thing missing. 
+            # We then need to replace the train loss with the val loss in MultistageEarlyStoppingCallback
+
+        #reset after the end of the every stage.
+        self.starting_inner_it[direction] = 1
+        self.logs['resume_info'][direction]['starting_inner_it'] = 1
+
     def sb_alterating_train(self, opt):
         #assert not util.is_image_dataset(opt)
         policy_f, policy_b = self.z_f, self.z_b
@@ -789,12 +788,12 @@ class MultiStageRunner():
                     #compute the contribution to joint loglikelihood of the current level 
                     #after the end of training stage.
                     #If this stops improving we can move to the next outer iteration.
-
-                    val_increment_loss = self.compute_level_contribution_to_ll(opt, val_inter_pq_s, new_discretisation)
-                    self.losses['val_increment_loss'][outer_it].append(val_increment_loss)
-                    step = len(self.losses['val_increment_loss'][outer_it])
-                    self.writer.add_scalar('val_increment_loss_outer_it_%d' % outer_it, val_increment_loss, global_step=step)
-                    stages_early_stopper.add_value(val_increment_loss)
+                    if stage_num % opt.val_freq == 0:
+                        val_increment_loss = self.compute_level_contribution_to_ll(opt, val_inter_pq_s, new_discretisation)
+                        self.losses['val_increment_loss'][outer_it].append(val_increment_loss)
+                        step = len(self.losses['val_increment_loss'][outer_it])
+                        self.writer.add_scalar('val_increment_loss_outer_it_%d' % outer_it, val_increment_loss, global_step=step)
+                        stages_early_stopper.add_value(val_increment_loss)
 
                     self.sb_outer_stage(opt, 'forward',
                                         optimizer_f, optimizer_b, sched_f, sched_b, 
@@ -802,11 +801,12 @@ class MultiStageRunner():
                                         tr_steps, outer_it, stage_num)
                     self.logs['resume_info']['forward']['starting_stage'] += 1
 
-                    val_increment_loss = self.compute_level_contribution_to_ll(opt, val_inter_pq_s, new_discretisation)
-                    self.losses['val_increment_loss'][outer_it].append(val_increment_loss)
-                    step = len(self.losses['val_increment_loss'][outer_it])
-                    self.writer.add_scalar('val_increment_loss_outer_it_%d' % outer_it, val_increment_loss, global_step=step)
-                    stages_early_stopper.add_value(val_increment_loss)
+                    if stage_num % opt.val_freq == 0:
+                        val_increment_loss = self.compute_level_contribution_to_ll(opt, val_inter_pq_s, new_discretisation)
+                        self.losses['val_increment_loss'][outer_it].append(val_increment_loss)
+                        step = len(self.losses['val_increment_loss'][outer_it])
+                        self.writer.add_scalar('val_increment_loss_outer_it_%d' % outer_it, val_increment_loss, global_step=step)
+                        stages_early_stopper.add_value(val_increment_loss)
 
             self.logs['resume_info']['forward']['starting_outer_it']+=1
             self.logs['resume_info']['backward']['starting_outer_it']+=1
