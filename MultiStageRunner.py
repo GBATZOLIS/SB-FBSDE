@@ -206,6 +206,7 @@ class MultistageCombiner():
         passes = num_samples // batchsize + 1
         extra_part = num_samples - (num_samples // batchsize) * batchsize
 
+        counter = 1
         for i in tqdm(range(1, passes+1)):
             x = self.sample(save_traj=False, stochastic=stochastic, target_level=target_level)
             x = util.norm_data(base_opt, x)
@@ -214,8 +215,9 @@ class MultistageCombiner():
                 x = x[:extra_part]
             
             for i in range(x.shape[0]):
-                fn = os.path.join(base_opt.eval_target_level_path, 'img{}.jpg'.format(i))
+                fn = os.path.join(base_opt.eval_target_level_path, 'img{}.jpg'.format(counter))
                 torchvision.utils.save_image(x[i,...], fn)
+                counter += 1
 
     def generate_samples(self, N=1, save_traj=True, stochastic=True):
         for i in range(1, N+1):
