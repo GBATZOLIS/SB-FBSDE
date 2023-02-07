@@ -244,7 +244,7 @@ def scatter(x, y, **kwargs):
 def get_FID_npz_path(opt):
     if opt.FID_ckpt is not None: return opt.FID_ckpt
     return {
-        'cifar10': 'checkpoint/cifar10_fid_stat_local.npz',
+        'cifar10': 'dataset_statistics/cifar10_fid_stat_local.npz',
     }.get(opt.problem_name, None)
 
 def snapshot(opt, img, stage, direction):

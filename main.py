@@ -45,7 +45,8 @@ def main(opt):
     elif opt.phase == 'test':
         if opt.training_scheme == 'divideNconquer':
             run = MultistageCombiner(opt)
-            run.generate_samples()
+            run.compute_fid()
+            #run.generate_samples()
 
             #run = MultiStageRunner(opt)
             #run.experimental_features(opt) #-> test the effect of decreasing sigma on the ODE and SDE trajectories (plot paths, calculate average ODE curvature)

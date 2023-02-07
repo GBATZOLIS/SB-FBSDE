@@ -179,16 +179,44 @@ class MultistageCombiner():
         log_dir = os.path.join(opt.experiment_path,  'reduction_%d' % opt.reduction_levels, 'samples')
         self.writer = SummaryWriter(log_dir=log_dir)
     
-    def sample(self, save_traj=True, stochastic=False):
+    def sample(self, save_traj=True, stochastic=False, target_level=1):
         levels = sorted(list(self.opts.keys()), reverse=True)
         x = None
         for level in levels:
             opt = self.opts[level]
             out = self.multistage_model[level].sample(opt, opt.base_discretisation, x, save_traj, stochastic)
             x = out['sample']
+
+            if level == target_level:
+                break
         
         return x
     
+    def compute_fid(self, ):
+        base_opt = self.opts[1]
+        FID_path = util.get_FID_npz_path(base_opt)
+        self.generate_FID_dataset(target_level=base_opt.target_level)
+        return util.get_fid(FID_path, base_opt.eval_target_level_path)
+
+    def generate_FID_dataset(self, num_samples=50000, stochastic=True, target_level=1):
+        #basic implementation (no tricks yet)
+        base_opt = self.opts[1]
+        batchsize = base_opt.samp_bs
+
+        passes = num_samples // batchsize + 1
+        extra_part = num_samples - (num_samples // batchsize) * batchsize
+
+        for i in range(1, passes+1):
+            x = self.sample(save_traj=False, stochastic=stochastic, target_level=target_level)
+            x = util.norm_data(base_opt, x)
+            
+            if i == passes:
+                x = x[:extra_part]
+            
+            for i in range(x.shape[0]):
+                fn = os.path.join(base_opt.eval_target_level_path, 'img{}.jpg'.format(i))
+                torchvision.utils.save_image(x[i,...], fn)
+
     def generate_samples(self, N=1, save_traj=True, stochastic=True):
         for i in range(1, N+1):
             x = self.sample(save_traj, stochastic)

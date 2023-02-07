@@ -64,6 +64,11 @@ def set():
     parser.add_argument('--level-id', type=int, default=1, help='ID of the interval to be either reduced or taught based on the phase of the multistage algorithm.')
     parser.add_argument('--reduced-models-load', type=str, nargs='+', default=[], help='reduced models checkpoints')
     parser.add_argument('--use-last-level', type=bool, default=True, help='Whether to use the prior distribution if we are in the last level.')
+    parser.add_argument('--target-level', type=int, default=1, help='The last (target) level of the reverse diffusion. \
+    This determines the highest SNR that we reach in sampling. \
+    We find empirically that reaching a very high SNR can be detrimental to the sampling performance. \
+    So we want to provide flexibility in the sampling process. \
+    We want to be able to generate images of lower SNR than the highest trained SNR target.')
 
     # --------------- SB training & sampling (corrector) ---------------
     parser.add_argument("--training-scheme", type=str, default='standard', help='training schem. Options=[standard, divideNconquer]')
@@ -174,8 +179,12 @@ def set():
     if opt.prev_reduction_levels is None:
         opt.prev_reduction_levels = opt.max_num_intervals
 
-    #opt.eval_path = os.path.join(multistage_phase_path, 'eval')
-    #os.makedirs(opt.eval_path, exist_ok=True)
+    opt.eval_path = os.path.join(multistage_phase_path, 'eval')
+    os.makedirs(opt.eval_path, exist_ok=True)
+
+    opt.eval_target_level_path = os.path.join(multistage_phase_path, 'eval', 'target_level_%d' % opt.target_level)
+    os.makedirs(opt.eval_target_level_path, exist_ok=True)
+
     '''
     if opt.snapshot_freq:
         os.makedirs(os.path.join(opt.eval_path, 'forward'), exist_ok=True)
