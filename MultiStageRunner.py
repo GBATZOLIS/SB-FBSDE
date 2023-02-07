@@ -192,11 +192,15 @@ class MultistageCombiner():
         
         return x
     
-    def compute_fid(self, ):
+    def compute_fid(self, generate_dataset=True):
         base_opt = self.opts[1]
         FID_path = util.get_FID_npz_path(base_opt)
-        self.generate_FID_dataset(target_level=base_opt.target_level)
-        return util.get_fid(FID_path, base_opt.eval_target_level_path)
+
+        if generate_dataset:
+            self.generate_FID_dataset(target_level=base_opt.target_level)
+            
+        fid_val = util.get_fid(FID_path, base_opt.eval_target_level_path)
+        print('FID: ', fid_val) 
 
     def generate_FID_dataset(self, num_samples=50000, stochastic=True, target_level=1):
         #basic implementation (no tricks yet)
