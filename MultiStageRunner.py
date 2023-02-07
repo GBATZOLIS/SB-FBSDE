@@ -206,7 +206,7 @@ class MultistageCombiner():
         passes = num_samples // batchsize + 1
         extra_part = num_samples - (num_samples // batchsize) * batchsize
 
-        for i in range(1, passes+1):
+        for i in tqdm(range(1, passes+1)):
             x = self.sample(save_traj=False, stochastic=stochastic, target_level=target_level)
             x = util.norm_data(base_opt, x)
             
