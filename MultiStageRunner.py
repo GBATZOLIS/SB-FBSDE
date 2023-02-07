@@ -1054,11 +1054,15 @@ class MultiStageRunner():
     #this method needs to be modified
     @torch.no_grad()
     def sample(self, opt, discretisation, x=None, save_traj=True, stochastic=True):
-        #1.) detect number of SBP stages
-        outer_it = self.starting_outer_it - self.reduce_outer_it_in_sampling
-        num_intervals = self.max_num_intervals // 2**(outer_it-1)
-        inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
-                                                                self.level_min_time, self.level_max_time, num_intervals)
+        if hasattr(self, 'sampling_inter_pq_s'):
+            inter_pq_s = self.sampling_inter_pq_s
+        else:
+            #1.) detect number of SBP stages
+            outer_it = self.starting_outer_it - self.reduce_outer_it_in_sampling
+            num_intervals = self.max_num_intervals // 2**(outer_it-1)
+            inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
+                                                                    self.level_min_time, self.level_max_time, num_intervals)
+            self.sampling_inter_pq_s = inter_pq_s
 
         sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
         
