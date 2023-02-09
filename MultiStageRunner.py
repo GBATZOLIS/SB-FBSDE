@@ -426,7 +426,7 @@ class MultiStageRunner():
 
     #This is what we should use to assess convergence in the alternating training procedure
     def compute_level_contribution_to_ll(self, opt, inter_pq_s, discretisation): 
-        num_batches = 10
+        num_batches = 20
         average_total_increment = 0.
         for j in range(num_batches):
             total_increment = 0.
