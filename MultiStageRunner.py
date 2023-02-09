@@ -833,12 +833,14 @@ class MultiStageRunner():
                     #compute the contribution to joint loglikelihood of the current level 
                     #after the end of training stage.
                     #If this stops improving we can move to the next outer iteration.
+                    '''
                     if stage_num % opt.val_freq == 0:
                         val_increment_loss = self.compute_level_contribution_to_ll(opt, val_inter_pq_s, new_discretisation)
                         self.losses['val_increment_loss'][outer_it].append(val_increment_loss)
                         step = len(self.losses['val_increment_loss'][outer_it])
                         self.writer.add_scalar('val_increment_loss_outer_it_%d' % outer_it, val_increment_loss, global_step=step)
                         stages_early_stopper.add_value(val_increment_loss)
+                    '''
 
                     self.sb_outer_stage(opt, 'forward',
                                         optimizer_f, optimizer_b, sched_f, sched_b, 
