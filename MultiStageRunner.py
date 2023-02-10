@@ -715,13 +715,7 @@ class MultiStageRunner():
             self.logs['resume_info'][direction]['starting_inner_it'] = inner_it
             self.logs['resume_info'][direction]['global_step'] = self.global_step
 
-            
-            if self.global_step % opt.inner_it_save_freq == 0 and self.global_step !=0:
-                keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
-                save_name = '%d_%d_%d' % (outer_it, stage_num, inner_it)
-                util.multi_SBP_save_checkpoint(opt, self, keys, save_name)
-                util.save_logs(opt, self, save_name)
-
+            if self.global_step % opt.sampling_freq == 0 and self.global_step !=0:
                 #print samples for every saved checkpoint
                 with torch.no_grad():
                     sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
@@ -739,6 +733,12 @@ class MultiStageRunner():
                     dyn = sde.build(opt, p, q)
                     img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
                     self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), img)
+
+            if self.global_step % opt.inner_it_save_freq == 0 and self.global_step !=0:
+                keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
+                save_name = '%d_%d_%d' % (outer_it, stage_num, inner_it)
+                util.multi_SBP_save_checkpoint(opt, self, keys, save_name)
+                util.save_logs(opt, self, save_name)              
             
 
             # We need to add the validation here. But let's skip it for the time being. 
