@@ -666,6 +666,90 @@ class MultiStageRunner():
 
         return losses
 
+    def first_outer_it_with_score_matching(self, opt, direction,
+                               optimizer_f, optimizer_b, 
+                               sched_f, sched_b, 
+                               inter_pq_s, val_inter_pq_s, discretisation, 
+                               tr_steps):
+        
+        outer_it = 1
+        stage_num = 1
+        policy_opt, policy_impt = {
+            'forward':  [self.z_f, self.z_b], # train forward, sample from backward
+            'backward': [self.z_b, self.z_f], # train backward, sample from forward
+        }.get(direction)
+
+        policy_impt = freeze_policy(policy_impt)
+        policy_opt = activate_policy(policy_opt)
+
+        start_inner_it = self.starting_inner_it[direction]
+
+        #I need to modify the functionality of MultistageEarlyStoppingCallback
+        #we need to replace train with val once we sort out the validation calculation.
+        early_stopper = MultistageEarlyStoppingCallback(patience=opt.stopping_patience, loss_values=self.losses[direction][outer_it][stage_num]['train']) 
+
+        #we should stop the training when we have convergence of all the intervals 
+        #or we reach the max number of allowed iterations in one training episode
+        for inner_it in tqdm(range(start_inner_it, opt.num_inner_iterations+1)):
+            stop = early_stopper()
+            if stop or inner_it == opt.num_inner_iterations:
+                break
+
+            status = early_stopper.get_stages_status()
+            probs = self.convergence_status_to_probs(status, opt.reweighting_factor)
+            intervals = list(probs.keys())
+            weights = [probs[key] for key in intervals]
+            interval_key = random.choices(intervals, weights=weights, k=1)[0]
+            p, q = inter_pq_s[interval_key-1]
+            interval_dyn = sde.build(opt, p, q)
+            ts = torch.linspace(p.time, q.time, discretisation)
+            new_dt = ts[1]-ts[0]
+            interval_dyn.dt = new_dt
+            ts = ts.to(opt.device)
+
+            #I need to create a new update policy that performs score matching according to equation 12
+            #while the sample is drawn from the posterior distribution conditioned on the endpoints X0,X1 (equation 11)
+            #I need samples from the transition kernel that maps p to q.
+            losses = self.modified_score_matching(opt, direction, interval_key, 
+                                                    policy_impt, policy_opt, outer_it,
+                                                    interval_dyn, ts, tr_steps)
+            avg_loss = np.mean(losses)
+            early_stopper.add_stage_value(avg_loss, interval_key)
+
+            if self.global_step % opt.sampling_freq == 0 and self.global_step !=0:
+                #print samples for every saved checkpoint
+                with torch.no_grad():
+                    sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
+                    sample = sample.to('cpu')
+                    #gt_sample = inter_pq_s[0][0].sample()
+                
+                img_dataset = util.is_image_dataset(opt)
+                if img_dataset:
+                    sample_imgs =  sample.cpu()
+                    grid_images = torchvision.utils.make_grid(sample_imgs, nrow=int(np.sqrt(sample_imgs.size(0))), normalize=True, scale_each=True)
+                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), grid_images)
+                else:
+                    problem_name = opt.problem_name
+                    p, q = inter_pq_s[0]
+                    dyn = sde.build(opt, p, q)
+                    img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
+                    self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), img)
+
+            if self.global_step % opt.inner_it_save_freq == 0 and self.global_step !=0:
+                keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
+                save_name = '%d_%d_%d' % (outer_it, stage_num, inner_it)
+                util.multi_SBP_save_checkpoint(opt, self, keys, save_name)
+                util.save_logs(opt, self, save_name)              
+            
+
+            # We need to add the validation here. But let's skip it for the time being. 
+            # It's the only thing missing. 
+            # We then need to replace the train loss with the val loss in MultistageEarlyStoppingCallback
+
+        #reset after the end of the every stage.
+        self.starting_inner_it[direction] = 1
+        self.logs['resume_info'][direction]['starting_inner_it'] = 1
+
     def sb_outer_stage(self, opt, direction,
                                optimizer_f, optimizer_b, 
                                sched_f, sched_b, 
