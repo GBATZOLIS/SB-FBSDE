@@ -56,13 +56,15 @@ def main(opt):
                                                                     run.level_min_time, run.level_max_time, opt.max_num_intervals,
                                                                     discretisation_policy=opt.discretisation_policy, outer_it=1, phase='val')
             
-            output = run.ddpm_sample(opt, inter_pq_s, discretisation=4, return_evolution=True)
+            output = run.ddpm_sample(opt, inter_pq_s, discretisation=opt.discretisation_policy, return_evolution=True)
+            print(output[0])
+            print(output[1])
             
             #plt.figure()
             #plt.scatter(output[:,0], output[:,1])
             #plt.show()
 
-            
+            '''
             traj = output['evolution']
 
             import matplotlib.pyplot as plt
@@ -73,7 +75,8 @@ def main(opt):
                 plt.plot(traj[:,i,0], traj[:,i,1], color=color, alpha=0.3)
 
             plt.show()
-            
+            '''
+
             #plt.scatter(x[:,0], x[:,1])
             #plt.savefig(os.path.join(save_path, 'encoded_trajectory.png' ))
             #run.experimental_features(opt) #-> test the effect of decreasing sigma on the ODE and SDE trajectories (plot paths, calculate average ODE curvature)
