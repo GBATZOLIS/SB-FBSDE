@@ -59,6 +59,27 @@ def build_data_sampler(opt, batch_size, phase):
     else:
         raise RuntimeError()
 
+def build_equidistant_perturbed_data_sampler(opt, batch_size, alpha, sigma, phase):
+    if util.is_toy_dataset(opt):
+        return {
+            'gmm': PerturbedEquidistantMixMultiVariateNormal,
+            'checkerboard': PerturbedEquidistantCheckerBoard,
+            'moon-to-spiral': PerturbedEquidistantSpiral,
+        }.get(opt.problem_name)(opt, alpha, sigma)
+
+    elif util.is_image_dataset(opt):
+        dataset_generator = {
+            'mnist':      generate_mnist_dataset,
+            'celebA32':   generate_celebA_dataset,
+            'celebA64':   generate_celebA_dataset,
+            'cifar10':    generate_cifar10_dataset,
+        }.get(opt.problem_name)
+        dataset = dataset_generator(opt, phase=phase)
+        return PerturbedEquidistantDataSampler(opt, alpha, sigma, dataset, batch_size, opt.device)
+
+    else:
+        raise RuntimeError()
+
 def build_perturbed_data_sampler(opt, batch_size, snr, phase):
     if util.is_toy_dataset(opt):
         return {
@@ -117,8 +138,8 @@ class MixMultiVariateNormal:
 
 
 class PerturbedMixMultiVariateNormal(MixMultiVariateNormal):
-    def __init__(self, opt):
-        super().__init__(opt, snr)
+    def __init__(self, opt, snr):
+        super().__init__(opt)
         self.snr = torch.tensor(snr)
     
     def sample(self):
@@ -127,6 +148,21 @@ class PerturbedMixMultiVariateNormal(MixMultiVariateNormal):
         sigma = 1/torch.sqrt(1+self.snr)
         perturbed_sample = alpha * not_perturbed_sample + sigma * torch.rand_like(not_perturbed_sample)
         return perturbed_sample
+
+class PerturbedEquidistantMixMultiVariateNormal(MixMultiVariateNormal):
+    def __init__(self, opt, alpha, sigma):
+        super().__init__(opt)
+        self.alpha = torch.tensor(alpha)
+        self.sigma = torch.tensor(sigma)
+
+    def sample(self, return_original=False):
+        not_perturbed_sample = super().sample()
+        perturbed_sample = self.alpha * not_perturbed_sample + self.sigma * torch.randn_like(not_perturbed_sample)
+        
+        if return_original:
+            return perturbed_sample, not_perturbed_sample
+        else:
+            return perturbed_sample
 
 class CheckerBoard:
     def __init__(self, opt):
@@ -150,7 +186,24 @@ class CheckerBoard:
         # res=res+np.random.randn(*res.shape)*1
         sample=torch.Tensor(sample)
         sample=sample[0:n,:]
+        #print(sample.size())
         return sample
+
+class PerturbedEquidistantCheckerBoard(CheckerBoard):
+    def __init__(self, opt, alpha, sigma):
+        super().__init__(opt)
+        self.alpha = torch.tensor(alpha)
+        self.sigma = torch.tensor(sigma)
+
+    def sample(self, return_original=False):
+        not_perturbed_sample = super().sample()
+        perturbed_sample = self.alpha * not_perturbed_sample + self.sigma * torch.randn_like(not_perturbed_sample)
+        
+        if return_original:
+            return perturbed_sample, not_perturbed_sample
+        else:
+            return perturbed_sample
+
 
 class PerturbedCheckerBoard(CheckerBoard):
     def __init__(self, opt, snr):
@@ -235,6 +288,21 @@ class PerturbedSpiral(Spiral):
         perturbed_sample = alpha * not_perturbed_sample + sigma * torch.rand_like(not_perturbed_sample)
         return perturbed_sample
 
+class PerturbedEquidistantSpiral(Spiral):
+    def __init__(self, opt, alpha, sigma):
+        super().__init__(opt)
+        self.alpha = torch.tensor(alpha)
+        self.sigma = torch.tensor(sigma)
+
+    def sample(self, return_original=False):
+        not_perturbed_sample = super().sample()
+        perturbed_sample = self.alpha * not_perturbed_sample + self.sigma * torch.randn_like(not_perturbed_sample)
+        
+        if return_original:
+            return perturbed_sample, not_perturbed_sample
+        else:
+            return perturbed_sample
+            
 class Moon:
     def __init__(self, batch_size):
         self.batch_size = batch_size
@@ -272,6 +340,44 @@ class DataSampler: # a dump data sampler
         data = next(self.dataloader)
         return data[0].to(self.device)
 
+class PerturbedMoon(Moon):
+    def __init__(self, snr, batch_size):
+        super().__init__(batch_size)
+        self.snr = torch.tensor(snr)
+    
+    def sample(self):
+        not_perturbed_sample = super().sample()
+        alpha = torch.sqrt(self.snr/(1+self.snr))
+        sigma = 1/torch.sqrt(1+self.snr)
+        perturbed_sample = alpha * not_perturbed_sample + sigma * torch.rand_like(not_perturbed_sample)
+        return perturbed_sample
+
+class DataSampler: # a dump data sampler
+    def __init__(self, dataset, batch_size, device):
+        self.num_sample = len(dataset)
+        self.dataloader = setup_loader(dataset, batch_size)
+        self.batch_size = batch_size
+        self.device = device
+
+    def sample(self):
+        data = next(self.dataloader)
+        return data[0].to(self.device)
+
+class PerturbedEquidistantDataSampler(DataSampler): #perturbed dump data sampler
+    def __init__(self, opt, alpha, sigma, dataset, batch_size, device):
+        super().__init__(dataset, batch_size, device)
+        self.alpha = torch.tensor(alpha)
+        self.sigma = torch.tensor(sigma)
+
+    def sample(self, return_original=False):
+        not_perturbed_sample = super().sample()
+        perturbed_sample = self.alpha * not_perturbed_sample + self.sigma * torch.randn_like(not_perturbed_sample)
+        
+        if return_original:
+            return perturbed_sample, not_perturbed_sample
+        else:
+            return perturbed_sample
+            
 class PerturbedDataSampler(DataSampler): #perturbed dump data sampler
     def __init__(self, opt, snr, dataset, batch_size, device):
         super().__init__(dataset, batch_size, device)

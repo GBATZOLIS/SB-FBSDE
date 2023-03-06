@@ -37,6 +37,14 @@ class BaseSDE(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def _g(self, x, t):
         raise NotImplementedError
+     
+    @abc.abstractmethod
+    def forward_variance_accumulation(self, t):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def backward_variance_accumulation(self, t):
+        raise NotImplementedError
 
     def f(self, x, t, direction):
         sign = 1. if direction=='forward' else -1.
@@ -48,6 +56,44 @@ class BaseSDE(metaclass=abc.ABCMeta):
     def dw(self, x, dt=None):
         dt = self.dt if dt is None else dt
         return torch.randn_like(x)*np.sqrt(dt)
+
+    def get_paired_samples(self, direction='backward'):
+        if direction == 'backward':
+            x0, x1 = self.get_forward_paired_samples()
+        elif direction == 'forward':
+            x0, x1 = self.get_backward_paired_samples()
+        return x0, x1
+
+    def get_sample_from_pairing(self, t, direction='backward'):
+        x0, x1 = self.get_paired_samples(direction)
+        x_t = self.get_sample_from_posterior_given_pair(t, x0, x1)
+        return x_t
+
+    def get_backward_paired_samples(self, ):
+        raise NotImplementedError
+
+    def get_forward_paired_samples(self, ):
+        aT = self.p.aT
+        sT = self.p.sT
+        x0 = self.p.sample()
+        x0 = x0.to(self.device)
+        x1 = aT * x0 + sT * torch.randn_like(x0).to(self.device)
+        return x0, x1
+
+    def get_sample_from_posterior_given_pair(self, t, x0, x1):
+        s_t_2 = self.forward_variance_accumulation(t)
+        bar_s_t_2 = self.backward_variance_accumulation(t)
+
+        var_sum = s_t_2 + bar_s_t_2
+        x0_factor = bar_s_t_2/var_sum
+        x1_factor = s_t_2/var_sum
+
+        mean_t = x0_factor[(...,) + (None,) * len(x0.shape[1:])] * x0 + x1_factor[(...,) + (None,) * len(x1.shape[1:])] * x1
+        std_t = torch.sqrt(s_t_2 * bar_s_t_2 / var_sum)
+
+        x_t = mean_t + std_t[(...,) + (None,) * len(x0.shape[1:])] * torch.randn_like(x0).to(self.device)
+        return x_t
+        
 
     def propagate(self, t, x, z, direction, f=None, dw=None, dt=None):
         g = self.g(  t)
@@ -77,6 +123,7 @@ class BaseSDE(metaclass=abc.ABCMeta):
             x=x+z/g*self.sigma_min**2*self.opt.t0
             print('trick applied,sigma_min{}'.format(self.sigma_min))
         return x
+
 
     def sample_traj(self, ts, policy, corrector=None, apply_trick=True, save_traj=True, initial_sample=None, return_original=False):
 
@@ -266,6 +313,21 @@ class SimpleSDE(BaseSDE):
 
     def _g(self, t):
         return torch.Tensor([self.var]).to(t.device)
+    
+    def forward_variance_accumulation(self, t):
+        #int_p.time_t{g_τ^2dτ}
+        g2 = self._g(t)**2
+        delta_t = t - self.p.time
+        return g2*delta_t
+    
+    def backward_variance_accumulation(self, t):
+        #int_t_q.time{g_τ^2dτ}
+        g2 = self._g(t)**2
+        delta_t = self.q.time - t
+        return g2*delta_t
+
+
+    
 
 class VPSDE(BaseSDE):
     def __init__(self, opt, p, q):

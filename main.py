@@ -6,6 +6,8 @@ from runner import Runner
 from MultiStageRunner import MultiStageRunner, MultistageCombiner
 import util
 import options
+import matplotlib.pyplot as plt
+import numpy as np
 
 import colored_traceback.always
 from ipdb import set_trace as debug
@@ -44,11 +46,36 @@ def main(opt):
             
     elif opt.phase == 'test':
         if opt.training_scheme == 'divideNconquer':
-            run = MultistageCombiner(opt)
-            run.compute_fid()
+            #run = MultistageCombiner(opt)
+            #run.compute_fid()
             #run.generate_samples()
 
-            #run = MultiStageRunner(opt)
+            run = MultiStageRunner(opt)
+
+            inter_pq_s = run.setup_equidistant_distributions(opt, run.level_log_SNR_max, run.level_log_SNR_min, 
+                                                                    run.level_min_time, run.level_max_time, opt.max_num_intervals,
+                                                                    discretisation_policy=opt.discretisation_policy, outer_it=1, phase='val')
+            
+            output = run.ddpm_sample(opt, inter_pq_s, discretisation=4, return_evolution=True)
+            
+            #plt.figure()
+            #plt.scatter(output[:,0], output[:,1])
+            #plt.show()
+
+            
+            traj = output['evolution']
+
+            import matplotlib.pyplot as plt
+            import numpy as np
+            plt.figure()
+            for i in range(traj.size(1)):
+                color = (np.random.rand(), np.random.rand(), np.random.rand())
+                plt.plot(traj[:,i,0], traj[:,i,1], color=color, alpha=0.3)
+
+            plt.show()
+            
+            #plt.scatter(x[:,0], x[:,1])
+            #plt.savefig(os.path.join(save_path, 'encoded_trajectory.png' ))
             #run.experimental_features(opt) #-> test the effect of decreasing sigma on the ODE and SDE trajectories (plot paths, calculate average ODE curvature)
 
 if not opt.cpu:

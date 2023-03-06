@@ -69,8 +69,8 @@ class SchrodingerBridgePolicy(torch.nn.Module):
         if t.dim()==0: t = t.repeat(x.shape[0])
         assert t.dim()==1 and t.shape[0] == x.shape[0]
 
-        if self.use_t_idx:
-            t = t / self.opt.T * self.opt.interval
+        #if self.use_t_idx:
+        #    t = t / self.opt.T * self.opt.interval
 
         out = self.net(x, t)
 

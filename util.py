@@ -117,12 +117,12 @@ def restore_checkpoint(opt, runner, load_name):
     else:
         full_keys = ['z_f','optimizer_f','ema_f','z_b','optimizer_b','ema_b']
 
-        with torch.cuda.device(opt.gpu):
-            checkpoint = torch.load(load_name, map_location=opt.device)
-            ckpt_keys=[*checkpoint.keys()]
-            for k in ckpt_keys:
-                obj = getattr(runner,k)
-                obj.load_state_dict(checkpoint[k])
+        #with torch.cuda.device(opt.gpu):
+        checkpoint = torch.load(load_name, map_location=opt.device)
+        ckpt_keys=[*checkpoint.keys()]
+        for k in ckpt_keys:
+            obj = getattr(runner,k)
+            obj.load_state_dict(checkpoint[k])
 
         if len(full_keys)!=len(ckpt_keys):
             value = { k for k in set(full_keys) - set(ckpt_keys) }
@@ -146,10 +146,10 @@ def save_logs(opt, runner, save_name):
 def multi_SBP_save_checkpoint(opt, runner, keys, save_name):
     checkpoint = {}
     fn = os.path.join(opt.ckpt_path, '%s.npz' % save_name)
-    with torch.cuda.device(opt.gpu):
-        for k in keys:
-            checkpoint[k] = getattr(runner,k).state_dict()
-        torch.save(checkpoint, fn)
+    #with torch.cuda.device(opt.gpu):
+    for k in keys:
+        checkpoint[k] = getattr(runner,k).state_dict()
+    torch.save(checkpoint, fn)
     print(green("checkpoint saved: {}".format(fn)))
 
 def save_checkpoint(opt, runner, keys, stage_it, dsm_train_it=None):

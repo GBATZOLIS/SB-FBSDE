@@ -348,6 +348,67 @@ class MultiStageRunner():
             self.writer = SummaryWriter(log_dir=log_dir)
 
     #done
+    def setup_equidistant_distributions(self, opt, log_SNR_max, log_SNR_min, min_time, max_time, num_intervals, \
+                                            discretisation_policy='constant', outer_it=1, phase='train'):
+        if discretisation_policy == 'constant':
+            batchsize = opt.samp_bs
+        elif discretisation_policy == 'double':
+            batchsize = opt.samp_bs // 2**(outer_it-1)
+
+        snr0=np.exp(log_SNR_max)
+        a1 = np.sqrt(snr0/(1+snr0))
+        s1 = np.sqrt(1/(1+snr0))
+
+        target_sigma = opt.prior_std #we need to set this carefully. Default value: 0.5
+        target_logsnr = log_SNR_min
+        target_alpha = np.sqrt(target_sigma**2*np.exp(target_logsnr))
+
+        #derive transition parameters
+        targetN = num_intervals + 1
+        aT=(target_alpha/a1)**(1/(targetN-1))
+        sT=np.sqrt((target_sigma**2-aT**(targetN-1)*s1**2)*(1-aT**2)/(1-(aT**2)**(targetN-1)))
+        s_infty = sT/np.sqrt(1-aT**2) #this must be equal to prior_std
+
+        def get_alpha_fn(a1, aT):
+            def alpha_fn(k):
+                aK = aT**(k-1)*a1
+                return aK
+            return alpha_fn
+        
+        def get_sigma_fn(sT, aT, s1):
+            def sigma_fn(k):
+                sK = np.sqrt(sT**2*(1-(aT**2)**(k-1))/(1-aT**2)+aT**(k-1)*s1**2)
+                return sK
+            return sigma_fn
+        
+        alpha_fn = get_alpha_fn(a1, aT)
+        sigma_fn = get_sigma_fn(sT, aT, s1)
+
+        alphas = [alpha_fn(k) for k in np.arange(1, num_intervals+1)]
+        sigmas = [sigma_fn(k) for k in np.arange(1, num_intervals+1)]
+        times = torch.linspace(min_time, max_time, num_intervals+1)
+
+        intermediate_distributions = {}
+        for i in range(num_intervals):
+            if self.last_level:
+                if i < num_intervals - 1:
+                    p = data.build_equidistant_perturbed_data_sampler(opt, batchsize, alphas[i], sigmas[i], phase)
+                    q = data.build_equidistant_perturbed_data_sampler(opt, batchsize, alphas[i+1], sigmas[i+1], phase)
+                elif i == num_intervals - 1:
+                    p = data.build_equidistant_perturbed_data_sampler(opt, batchsize, alphas[i], sigmas[i], phase)
+                    q = data.build_prior_sampler(opt, batchsize)
+            else:
+                p = data.build_equidistant_perturbed_data_sampler(opt, batchsize, alphas[i], sigmas[i], phase)
+                q = data.build_equidistant_perturbed_data_sampler(opt, batchsize, alphas[i+1], sigmas[i+1], phase)
+                
+            p.time = times[i]
+            p.aT = aT
+            p.sT = sT
+            q.time = times[i+1]
+            intermediate_distributions[i] = [p, q]
+
+        return intermediate_distributions
+
     def setup_intermediate_distributions(self, opt, log_SNR_max, log_SNR_min, 
                                                     min_time, max_time, 
                                                     num_intervals, discretisation_policy='constant', outer_it=1, phase='train'):
@@ -666,9 +727,45 @@ class MultiStageRunner():
 
         return losses
 
+    def modified_score_matching(self, opt, direction, interval_key, 
+                                                    policy_impt, policy_opt, outer_it,
+                                                    interval_dyn, tr_steps, stage_num):
+        #batch_size = interval_dyn.p.batch_size
+        t0 = interval_dyn.p.time + torch.tensor(1e-6) #add this for stability
+        t1 = interval_dyn.q.time
+        optimizer, ema, sched = self.get_optimizer_ema_sched(policy_opt)
+        losses = []
+        for it in range(tr_steps):
+            optimizer.zero_grad()
+
+            x0, x1 = interval_dyn.get_paired_samples(direction)
+            t = torch.rand(x0.size(0)).to(opt.device) * (t1 - t0) + t0 
+            #print(x0.size())
+            #print(x1.size())
+            xt = interval_dyn.get_sample_from_posterior_given_pair(t, x0, x1)
+            sigma_t = torch.sqrt(interval_dyn.forward_variance_accumulation(t))
+
+            epsilon = policy_opt(xt, t)
+            loss = epsilon - (xt - x0)/sigma_t[(...,) + (None,) * len(x0.shape[1:])]
+            loss = torch.mean(torch.square(loss))
+
+            loss.backward()
+            if opt.grad_clip is not None:
+                torch.nn.utils.clip_grad_norm(policy_opt.parameters(), opt.grad_clip)
+            optimizer.step()
+            ema.update()
+            if sched is not None: sched.step()
+
+            self.losses[direction][outer_it][stage_num]['train'][interval_key].append(loss.item())
+            interval_steps = sum([len(self.losses[direction][outer_it][stage_num]['train'][interval_key]) for stage_num in self.losses[direction][outer_it].keys()])
+            self.writer.add_scalar('outer_it_%d_train_%s_interval_%d' % (outer_it, direction, interval_key), loss, global_step=interval_steps)
+
+            print(loss.item())
+            losses.append(loss.item())
+        
+        return losses
+
     def first_outer_it_with_score_matching(self, opt, direction,
-                               optimizer_f, optimizer_b, 
-                               sched_f, sched_b, 
                                inter_pq_s, val_inter_pq_s, discretisation, 
                                tr_steps):
         
@@ -694,6 +791,10 @@ class MultiStageRunner():
             stop = early_stopper()
             if stop or inner_it == opt.num_inner_iterations:
                 break
+            
+            #if inner_it == 2:
+            #    self.encode_and_visualise_trajectories(opt, inter_pq_s)
+            #    break
 
             status = early_stopper.get_stages_status()
             probs = self.convergence_status_to_probs(status, opt.reweighting_factor)
@@ -712,14 +813,19 @@ class MultiStageRunner():
             #I need samples from the transition kernel that maps p to q.
             losses = self.modified_score_matching(opt, direction, interval_key, 
                                                     policy_impt, policy_opt, outer_it,
-                                                    interval_dyn, ts, tr_steps)
+                                                    interval_dyn, tr_steps, stage_num)
             avg_loss = np.mean(losses)
             early_stopper.add_stage_value(avg_loss, interval_key)
+
+            self.global_step += 1
+            self.logs['resume_info'][direction]['starting_inner_it'] = inner_it
+            self.logs['resume_info'][direction]['global_step'] = self.global_step
 
             if self.global_step % opt.sampling_freq == 0 and self.global_step !=0:
                 #print samples for every saved checkpoint
                 with torch.no_grad():
-                    sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
+                    #sample = self.multi_sb_generate_sample(opt, inter_pq_s, discretisation)
+                    sample = self.ddpm_sample(opt, inter_pq_s, discretisation)
                     sample = sample.to('cpu')
                     #gt_sample = inter_pq_s[0][0].sample()
                 
@@ -730,9 +836,10 @@ class MultiStageRunner():
                     self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), grid_images)
                 else:
                     problem_name = opt.problem_name
-                    p, q = inter_pq_s[0]
-                    dyn = sde.build(opt, p, q)
-                    img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
+                    #p, q = inter_pq_s[0]
+                    #dyn = sde.build(opt, p, q)
+                    #img = self.tensorboard_scatter_and_quiver_plot(opt, p, dyn, sample)
+                    img = self.tensorboard_scatter_plot(sample, problem_name, inner_it, outer_it)
                     self.writer.add_image('outer_it:%d - stage:%d - direction:%s - inner_it:%d' % (outer_it, stage_num, direction, inner_it), img)
 
             if self.global_step % opt.inner_it_save_freq == 0 and self.global_step !=0:
@@ -847,13 +954,22 @@ class MultiStageRunner():
         for outer_it in range(self.starting_outer_it, outer_iterations+1):
             num_intervals = self.max_num_intervals//2**(outer_it-1)
             
+            '''
             inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
                                                                     self.level_min_time, self.level_max_time, num_intervals,
                                                                     discretisation_policy=opt.discretisation_policy, outer_it=outer_it, phase='train')
             val_inter_pq_s = self.setup_intermediate_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
                                                                     self.level_min_time, self.level_max_time, num_intervals, 
                                                                     discretisation_policy=opt.discretisation_policy, outer_it=outer_it, phase='val')
-            
+            '''
+            inter_pq_s = self.setup_equidistant_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
+                                                                    self.level_min_time, self.level_max_time, num_intervals,
+                                                                    discretisation_policy=opt.discretisation_policy, outer_it=outer_it, phase='train')
+            val_inter_pq_s = self.setup_equidistant_distributions(opt, self.level_log_SNR_max, self.level_log_SNR_min, 
+                                                                    self.level_min_time, self.level_max_time, num_intervals, 
+                                                                    discretisation_policy=opt.discretisation_policy, outer_it=outer_it, phase='val')
+
+
             new_discretisation = self.compute_discretisation(opt, outer_it)
             
             starting_stage = self.starting_stage if outer_it == self.starting_outer_it else 1
@@ -908,6 +1024,10 @@ class MultiStageRunner():
                                 for i in range(1, num_intervals+1):
                                     self.losses[direction][outer_it][stage_num][phase][i] = []
 
+                    self.first_outer_it_with_score_matching(opt, 'backward',
+                               inter_pq_s, val_inter_pq_s, new_discretisation, tr_steps)
+
+                    '''
                     self.sb_outer_stage(opt, 'backward',
                                         optimizer_f, optimizer_b, sched_f, sched_b, 
                                         inter_pq_s, val_inter_pq_s, new_discretisation, 
@@ -917,14 +1037,14 @@ class MultiStageRunner():
                     #compute the contribution to joint loglikelihood of the current level 
                     #after the end of training stage.
                     #If this stops improving we can move to the next outer iteration.
-                    '''
+                    
                     if stage_num % opt.val_freq == 0:
                         val_increment_loss = self.compute_level_contribution_to_ll(opt, val_inter_pq_s, new_discretisation)
                         self.losses['val_increment_loss'][outer_it].append(val_increment_loss)
                         step = len(self.losses['val_increment_loss'][outer_it])
                         self.writer.add_scalar('val_increment_loss_outer_it_%d' % outer_it, val_increment_loss, global_step=step)
                         stages_early_stopper.add_value(val_increment_loss)
-                    '''
+                    
 
                     self.sb_outer_stage(opt, 'forward',
                                         optimizer_f, optimizer_b, sched_f, sched_b, 
@@ -938,6 +1058,8 @@ class MultiStageRunner():
                         step = len(self.losses['val_increment_loss'][outer_it])
                         self.writer.add_scalar('val_increment_loss_outer_it_%d' % outer_it, val_increment_loss, global_step=step)
                         stages_early_stopper.add_value(val_increment_loss)
+                    
+                    '''
 
             self.logs['resume_info']['forward']['starting_outer_it']+=1
             self.logs['resume_info']['backward']['starting_outer_it']+=1
@@ -1195,6 +1317,71 @@ class MultiStageRunner():
             
         return {'trajectory': xs, 'sample': x}
     
+    @torch.no_grad()
+    def encode_and_visualise_trajectories(self, opt, inter_pq_s):
+        save_path = os.path.join(opt.experiment_path, 'testing')
+        os.makedirs(save_path, exist_ok=True)
+
+        sorted_keys = sorted(list(inter_pq_s.keys()))
+        sample_evolution = []
+        for i, key in tqdm(enumerate(sorted_keys)):
+            p, q = inter_pq_s[key]
+            interval_dyn = sde.build(opt, p, q)
+            if i==0:
+                x0 = p.sample()
+                sample_evolution.append(x0)
+
+            aT = p.aT
+            sT = p.sT
+            x0 = aT * x0 + sT * torch.randn_like(x0)
+            sample_evolution.append(x0)
+        
+        traj = torch.stack(sample_evolution)
+        print(traj.size())
+        
+        plt.figure()
+        for i in range(traj.size(1)):
+            color = (np.random.rand(), np.random.rand(), np.random.rand())
+            plt.plot(traj[500:502,i,0], traj[500:502,i,1], color=color, alpha=0.3)
+
+        #plt.scatter(x[:,0], x[:,1])
+        plt.savefig(os.path.join(save_path, 'encoded_trajectory.png' ))
+
+        #return sample_evolution
+
+
+    @torch.no_grad()
+    def ddpm_sample(self, opt, inter_pq_s, discretisation, return_evolution=False):
+        #self.z_b predicts x0 in this implementation.
+        if return_evolution:
+            evolution=[]
+
+        sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
+        for i, key in tqdm(enumerate(sorted_keys)):
+            p, q = inter_pq_s[key]
+            interval_dyn = sde.build(opt, p, q)
+
+            if i==0:
+                x1 = q.sample().to(opt.device)
+                if return_evolution:
+                    evolution.append(x1)
+            
+            ts = torch.linspace(q.time, p.time, discretisation+1)
+            dt = ts[1]-ts[0] #negative dtimestep
+
+            for t in ts[:-1]:
+                s_t = torch.sqrt(interval_dyn.forward_variance_accumulation(t))
+                x0_e = x1 - s_t*self.z_b(x1, t)
+                x_t_plus_dt = interval_dyn.get_sample_from_posterior_given_pair(t+dt, x0_e, x1)
+                x1 = x_t_plus_dt
+                if return_evolution:
+                    evolution.append(x1)
+        
+        if return_evolution:
+            return {'x1':x1, 'evolution':torch.stack(evolution)}
+        else:
+            return x1
+
 
     @torch.no_grad()
     def multi_sb_generate_sample(self, opt, inter_pq_s, discretisation, initial_sample=None):
