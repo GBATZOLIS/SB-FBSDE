@@ -1366,7 +1366,7 @@ class MultiStageRunner():
                 if return_evolution:
                     evolution.append(x1)
             
-            ts = torch.linspace(q.time, p.time, discretisation+1)
+            ts = torch.linspace(q.time, p.time, discretisation+1).to(opt.device)
             dt = ts[1]-ts[0] #negative dtimestep
 
             for t in ts[:-1]:
