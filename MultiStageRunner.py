@@ -760,7 +760,7 @@ class MultiStageRunner():
             interval_steps = sum([len(self.losses[direction][outer_it][stage_num]['train'][interval_key]) for stage_num in self.losses[direction][outer_it].keys()])
             self.writer.add_scalar('outer_it_%d_train_%s_interval_%d' % (outer_it, direction, interval_key), loss, global_step=interval_steps)
 
-            print(loss.item())
+            #print(loss.item())
             losses.append(loss.item())
         
         return losses
