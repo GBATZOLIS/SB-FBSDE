@@ -56,7 +56,7 @@ def main(opt):
                                                                     run.level_min_time, run.level_max_time, opt.max_num_intervals,
                                                                     discretisation_policy=opt.discretisation_policy, outer_it=1, phase='val')
             
-            output = run.ddpm_sample(opt, inter_pq_s, discretisation=opt.discretisation_policy, return_evolution=False)
+            output = run.ddpm_sample(opt, inter_pq_s, discretisation=opt.base_discretisation, return_evolution=False)
             print(output[0])
             print(output[1])
 
