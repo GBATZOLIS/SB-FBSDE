@@ -9,6 +9,10 @@ import options
 import matplotlib.pyplot as plt
 import numpy as np
 
+import torchvision
+from torchvision.utils import save_image
+import os
+
 import colored_traceback.always
 from ipdb import set_trace as debug
 
@@ -56,9 +60,12 @@ def main(opt):
                                                                     run.level_min_time, run.level_max_time, opt.max_num_intervals,
                                                                     discretisation_policy=opt.discretisation_policy, outer_it=1, phase='val')
             
-            output = run.ddpm_sample(opt, inter_pq_s, discretisation=opt.base_discretisation, return_evolution=False)
-            print(output[0])
-            print(output[1])
+            output = run.ddpm_sample(opt, inter_pq_s, discretisation=4, return_evolution=True, starting_level=1)
+            print(output['evolution'].size())
+            for i in range(2):
+                evolution = output['evolution'][:,i,:,:,:][:-1]
+                grid_images = torchvision.utils.make_grid(evolution, nrow=int(np.sqrt(evolution.size(0))), normalize=True, scale_each=True)
+                save_image(grid_images, os.path.join(run.log_dir, 'grid_images_%d.png' % (i+1)))
 
             #plt.figure()
             #plt.scatter(output[:,0], output[:,1])

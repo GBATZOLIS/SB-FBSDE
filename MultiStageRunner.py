@@ -345,6 +345,7 @@ class MultiStageRunner():
             self.it_b = 0
 
             log_dir = os.path.join(opt.experiment_path,  'reduction_%d' % opt.reduction_levels, '%d' % opt.level_id, 'tensorboard_logs')
+            self.log_dir = log_dir
             self.writer = SummaryWriter(log_dir=log_dir)
 
     #done
@@ -1351,12 +1352,15 @@ class MultiStageRunner():
 
 
     @torch.no_grad()
-    def ddpm_sample(self, opt, inter_pq_s, discretisation, return_evolution=False):
+    def ddpm_sample(self, opt, inter_pq_s, discretisation, return_evolution=False, starting_level=1):
         #self.z_b predicts x0 in this implementation.
         if return_evolution:
             evolution=[]
 
         sorted_keys = sorted(list(inter_pq_s.keys()), reverse=True)
+        if starting_level > 1:
+            sorted_keys = sorted_keys[starting_level:]
+
         for i, key in tqdm(enumerate(sorted_keys)):
             p, q = inter_pq_s[key]
             interval_dyn = sde.build(opt, p, q)
@@ -1369,14 +1373,27 @@ class MultiStageRunner():
             ts = torch.linspace(q.time, p.time, discretisation+1).to(opt.device)
             dt = ts[1]-ts[0] #negative dtimestep
 
+            
             for t in ts[:-1]:
+                #print(x1[0])
                 s_t = torch.sqrt(interval_dyn.forward_variance_accumulation(t))
+                #print('s_t: ', s_t)
                 x0_e = x1 - s_t*self.z_b(x1, t)
-                x_t_plus_dt = interval_dyn.get_sample_from_posterior_given_pair(t+dt, x0_e, x1)
+                #print('x0_e: ', x0_e)
+                if torch.abs((t+dt) - p.time) <= torch.tensor(1e-6):
+                    x_t_plus_dt = x0_e
+                else:
+                    x_t_plus_dt = interval_dyn.get_sample_from_posterior_given_pair(t+dt, x0_e, x1)
+                
+                #print('x_t_plus_dt: ', x_t_plus_dt)
+                
                 x1 = x_t_plus_dt
                 if return_evolution:
                     evolution.append(x1)
+
         
+        #print(x1[0])
+
         if return_evolution:
             return {'x1':x1, 'evolution':torch.stack(evolution)}
         else:

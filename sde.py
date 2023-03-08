@@ -82,16 +82,24 @@ class BaseSDE(metaclass=abc.ABCMeta):
 
     def get_sample_from_posterior_given_pair(self, t, x0, x1):
         s_t_2 = self.forward_variance_accumulation(t)
+        #print('s_t_2: ', s_t_2)
         bar_s_t_2 = self.backward_variance_accumulation(t)
+        #print('bar_s_t_2: ', bar_s_t_2)
 
         var_sum = s_t_2 + bar_s_t_2
         x0_factor = bar_s_t_2/var_sum
         x1_factor = s_t_2/var_sum
 
+        #print('x0_factor: ', x0_factor)
+        #print('x1_factor: ', x1_factor)
+
         mean_t = x0_factor[(...,) + (None,) * len(x0.shape[1:])] * x0 + x1_factor[(...,) + (None,) * len(x1.shape[1:])] * x1
+        #print('mean_t: ', mean_t)
         std_t = torch.sqrt(s_t_2 * bar_s_t_2 / var_sum)
+        #print('std_t: ', std_t)
 
         x_t = mean_t + std_t[(...,) + (None,) * len(x0.shape[1:])] * torch.randn_like(x0).to(self.device)
+        #print('x_t: ', x_t)
         return x_t
         
 
